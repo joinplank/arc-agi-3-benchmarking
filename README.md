@@ -1,6 +1,6 @@
 # ARC-AGI-3 Benchmarking
 
-Clean, production-ready framework for benchmarking multimodal LLMs on ARC-AGI-3 interactive games.
+Framework for benchmarking multimodal LLMs on ARC-AGI-3 interactive games.
 
 ## Quick Start
 
