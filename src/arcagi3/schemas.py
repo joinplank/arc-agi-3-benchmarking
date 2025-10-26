@@ -74,6 +74,7 @@ class GameResult(BaseModel):
     usage: "Usage"
     actions: List[GameActionRecord]
     timestamp: datetime = None
+    scorecard_url: Optional[str] = None
     
     model_config = {
         'json_encoders': {

@@ -80,8 +80,8 @@ client = GameClient()
 games = client.list_games()
 
 # Play game
-card_id = "benchmark_run"
-client.open_scorecard(card_id, [games[0]['game_id']])
+scorecard_response = client.open_scorecard([games[0]['game_id']])
+card_id = scorecard_response['card_id']
 
 agent = MultimodalAgent(
     config="gpt-4o-mini-2024-07-18",
@@ -92,6 +92,7 @@ agent = MultimodalAgent(
 
 result = agent.play_game(games[0]['game_id'])
 print(f"Score: {result.final_score}, Cost: ${result.total_cost.total_cost:.4f}")
+print(f"Scorecard: {result.scorecard_url}")
 
 client.close_scorecard(card_id)
 ```
@@ -227,9 +228,12 @@ Results saved to `{save_results_dir}/{game_id}_{config}_{timestamp}.json`:
     "completion_tokens": 3780,
     "total_tokens": 11580
   },
+  "scorecard_url": "https://three.arcprize.org/scorecards/card_uuid",
   "actions": [...]
 }
 ```
+
+The `scorecard_url` field provides a direct link to view the game replay online on the ARC Prize platform.
 
 ## Resources
 
