@@ -41,9 +41,9 @@ def example_single_game():
     config = "gpt-4o-mini-2024-07-18"  # Use a cheaper model for testing
     print(f"Using config: {config}")
     
-    # Create scorecard
-    card_id = "example_card_123"
-    game_client.open_scorecard(card_id, [game_id])
+    scorecard_response = game_client.open_scorecard([game_id])
+    card_id = scorecard_response.get("card_id")
+    print(f"Scorecard created with card_id: {card_id}")
     
     try:
         # Create agent
@@ -68,6 +68,7 @@ def example_single_game():
         print(f"Duration: {result.duration_seconds:.2f}s")
         print(f"Total Cost: ${result.total_cost.total_cost:.4f}")
         print(f"Total Tokens: {result.usage.total_tokens}")
+        print(f"\nView your scorecard online: {result.scorecard_url}")
         print(f"{'=' * 60}")
         
     finally:

@@ -60,22 +60,27 @@ class GameClient:
         
         return response.json()
     
-    def open_scorecard(self, card_id: str, game_ids: List[str]) -> Dict[str, Any]:
+    def open_scorecard(self, game_ids: List[str], card_id: Optional[str] = None, tags: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Open a new scorecard for tracking game progress.
         
         Args:
-            card_id: Unique identifier for this scorecard
             game_ids: List of game IDs to include in the scorecard
+            card_id: Optional unique identifier for this scorecard. If not provided, API will generate one.
+            tags: Optional list of tags for the scorecard
             
         Returns:
-            Scorecard response from API
+            Scorecard response from API including the card_id
         """
         url = f"{self.ROOT_URL}/api/scorecard/open"
-        data = {
-            "card_id": card_id,
-            "game_ids": game_ids
-        }
+        data = {}
+        
+        if card_id:
+            data["card_id"] = card_id
+        if game_ids:
+            data["game_ids"] = game_ids
+        if tags:
+            data["tags"] = tags
         
         response = self._session.post(url, json=data)
         

@@ -78,14 +78,9 @@ class ARC3Tester:
             logger.info(f"Result for game {game_id} already exists, skipping")
             return None
         
-        # Generate card_id if not provided
-        if not card_id:
-            import uuid
-            card_id = f"card_{uuid.uuid4().hex[:8]}"
+        scorecard_response = self.game_client.open_scorecard([game_id], card_id=card_id)
+        card_id = scorecard_response.get("card_id", card_id)
         
-        # Open scorecard
-        logger.info(f"Opening scorecard {card_id} for game {game_id}")
-        self.game_client.open_scorecard(card_id, [game_id])
         
         try:
             # Create agent
@@ -226,6 +221,7 @@ def main_cli(cli_args: Optional[list] = None):
         print(f"Duration: {result.duration_seconds:.2f}s")
         print(f"Total Cost: ${result.total_cost.total_cost:.4f}")
         print(f"Total Tokens: {result.usage.total_tokens}")
+        print(f"\nView your scorecard online: {result.scorecard_url}")
         print(f"{'='*60}\n")
     
 

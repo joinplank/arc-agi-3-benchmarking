@@ -550,6 +550,8 @@ class MultimodalAgent:
         
         # Create result
         duration = time.time() - start_time
+        scorecard_url = f"{self.game_client.ROOT_URL}/scorecards/{self.card_id}"
+        
         result = GameResult(
             game_id=game_id,
             config=self.config,
@@ -560,7 +562,8 @@ class MultimodalAgent:
             total_cost=self.total_cost,
             usage=self.total_usage,
             actions=self.action_history,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
+            scorecard_url=scorecard_url
         )
         
         logger.info(
