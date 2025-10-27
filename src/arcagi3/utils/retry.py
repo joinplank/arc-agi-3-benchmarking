@@ -130,3 +130,40 @@ class RetryConfig:
         self.backoff_factor = backoff_factor
         self.max_delay = max_delay
 
+
+# Convenience retry decorators for common scenarios
+def retry_on_provider_error(max_retries: int = 3):
+    """Retry on ProviderError (rate limits, temporary API issues)."""
+    from arcagi3.errors import ProviderError
+    return retry_with_exponential_backoff(
+        max_retries=max_retries,
+        initial_delay=1.0,
+        backoff_factor=2.0,
+        max_delay=30.0,
+        exceptions=(ProviderError,)
+    )
+
+
+def retry_on_game_client_error(max_retries: int = 3):
+    """Retry on GameClientError (temporary network issues with ARC-AGI-3 API)."""
+    from arcagi3.errors import GameClientError
+    return retry_with_exponential_backoff(
+        max_retries=max_retries,
+        initial_delay=0.5,
+        backoff_factor=1.5,
+        max_delay=10.0,
+        exceptions=(GameClientError,)
+    )
+
+
+def retry_on_network_error(max_retries: int = 5):
+    """Retry on both ProviderError and GameClientError (all network-related)."""
+    from arcagi3.errors import ProviderError, GameClientError
+    return retry_with_exponential_backoff(
+        max_retries=max_retries,
+        initial_delay=1.0,
+        backoff_factor=2.0,
+        max_delay=60.0,
+        exceptions=(ProviderError, GameClientError)
+    )
+

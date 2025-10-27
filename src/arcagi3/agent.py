@@ -15,6 +15,7 @@ from PIL import Image
 from .adapters import create_provider
 from .game_client import GameClient
 from .image_utils import grid_to_image, image_to_base64, make_image_block, image_diff
+from .errors import GameClientError, ProviderError, TokenMismatchError
 from .schemas import (
     GameAction,
     GameState,
@@ -25,7 +26,7 @@ from .schemas import (
     Usage,
     CompletionTokensDetails,
 )
-from .utils.retry import retry_with_exponential_backoff
+from .utils.retry import retry_with_exponential_backoff, retry_on_provider_error
 
 
 logger = logging.getLogger(__name__)
@@ -266,41 +267,54 @@ class MultimodalAgent:
         self.total_usage.completion_tokens += completion_tokens
         self.total_usage.total_tokens += prompt_tokens + completion_tokens
     
-    @retry_with_exponential_backoff(max_retries=3)
+    @retry_on_provider_error(max_retries=3)
     def _call_provider(self, messages: List[Dict[str, Any]]) -> Any:
-        """Call provider with retry logic"""
-        # Use the provider's client directly for multimodal support
-        # Most providers follow OpenAI-style API
-        provider_name = self.provider.model_config.provider
+        """Call provider with retry logic
         
-        if provider_name == "openai":
-            return self.provider.client.chat.completions.create(
-                model=self.provider.model_config.model_name,
-                messages=messages,
-                **self.provider.model_config.kwargs
-            )
-        elif provider_name == "anthropic":
-            # Anthropic has different message format - extract text and images
-            return self.provider.client.messages.create(
-                model=self.provider.model_config.model_name,
-                messages=messages,
-                **self.provider.model_config.kwargs
-            )
-        else:
-            # For other providers, try OpenAI-compatible format
-            try:
+        Retries on ProviderError (rate limits, temporary API issues).
+        Does NOT retry on GameClientError or other exceptions.
+        """
+        provider_name = self.provider.model_config.provider
+        model_name = self.provider.model_config.model_name
+        
+        try:
+            # Use the provider's client directly for multimodal support
+            if provider_name == "openai":
                 return self.provider.client.chat.completions.create(
-                    model=self.provider.model_config.model_name,
+                    model=model_name,
                     messages=messages,
                     **self.provider.model_config.kwargs
                 )
-            except AttributeError:
-                # Fallback to direct client call
-                return self.provider.client.create(
-                    model=self.provider.model_config.model_name,
+            elif provider_name == "anthropic":
+                return self.provider.client.messages.create(
+                    model=model_name,
                     messages=messages,
                     **self.provider.model_config.kwargs
                 )
+            else:
+                # For other providers, try OpenAI-compatible format
+                try:
+                    return self.provider.client.chat.completions.create(
+                        model=model_name,
+                        messages=messages,
+                        **self.provider.model_config.kwargs
+                    )
+                except AttributeError:
+                    # Fallback to direct client call
+                    return self.provider.client.create(
+                        model=model_name,
+                        messages=messages,
+                        **self.provider.model_config.kwargs
+                    )
+        except Exception as e:
+            # Wrap all provider exceptions into ProviderError for consistent handling
+            # This allows the retry decorator to catch them
+            raise ProviderError.from_provider_error(
+                e, 
+                provider=provider_name,
+                model=model_name,
+                operation="chat_completion"
+            )
     
     def _analyze_previous_action(
         self,
@@ -544,8 +558,21 @@ class MultimodalAgent:
                     f"Score: {current_score}, State: {current_state}"
                 )
                 
+            except GameClientError as e:
+                logger.error(f"Game client error: {e}")
+                # Game API issues - abort this game
+                break
+            except ProviderError as e:
+                logger.error(f"Provider error: {e}")
+                # LLM provider issues - abort this game
+                break
+            except TokenMismatchError as e:
+                logger.error(f"Token counting error: {e}")
+                # Token counting issue - log but continue if possible
+                logger.warning("Continuing despite token mismatch...")
             except Exception as e:
-                logger.error(f"Error during game loop: {e}", exc_info=True)
+                logger.error(f"Unexpected error during game loop: {e}", exc_info=True)
+                # Unknown errors - abort to be safe
                 break
         
         # Create result
