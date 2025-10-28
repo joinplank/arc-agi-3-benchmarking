@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from arcagi3.agent import MultimodalAgent
 from arcagi3.game_client import GameClient
-from arcagi3.utils import read_models_config, result_exists, save_result
+from arcagi3.utils import read_models_config, save_result
 from arcagi3.schemas import GameResult
 
 
@@ -69,14 +69,8 @@ class ARC3Tester:
         Returns:
             GameResult with complete game information
         """
-        # Check if result already exists
-        if (
-            self.save_results_dir
-            and not self.overwrite_results
-            and result_exists(self.save_results_dir, game_id)
-        ):
-            logger.info(f"Result for game {game_id} already exists, skipping")
-            return None
+        # Note: Results are saved with unique timestamps, so multiple runs are allowed
+        # Each run creates a new file: {game_id}_{config}_{timestamp}.json
         
         scorecard_response = self.game_client.open_scorecard([game_id], card_id=card_id)
         card_id = scorecard_response.get("card_id", card_id)
