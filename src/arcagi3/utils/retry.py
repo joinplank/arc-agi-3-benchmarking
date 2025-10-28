@@ -42,6 +42,16 @@ def retry_with_exponential_backoff(
                 except exceptions as e:
                     last_exception = e
                     
+                    # Check if this is a GameClientError with a non-retryable status code
+                    # Status codes 400, 401, 403, 404 should not be retried
+                    if hasattr(e, 'status_code') and e.status_code is not None:
+                        if e.status_code in [400, 401, 403, 404]:
+                            logger.error(
+                                f"Function {func.__name__} failed with non-retryable status code {e.status_code}. "
+                                f"Not retrying. Error: {type(e).__name__}: {str(e)}"
+                            )
+                            raise
+                    
                     if attempt == max_retries:
                         logger.error(
                             f"Function {func.__name__} failed after {max_retries} retries. "
