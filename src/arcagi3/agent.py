@@ -15,6 +15,7 @@ from PIL import Image
 from .adapters import create_provider
 from .game_client import GameClient
 from .image_utils import grid_to_image, image_to_base64, make_image_block, image_diff
+from .memory import GameMemory
 from .schemas import (
     GameAction,
     GameState,
@@ -131,7 +132,8 @@ class MultimodalAgent:
         Provide your analysis, then after a line with "---", update the game information
         below while keeping the structure intact. Include what you've tried and what
         you'd like to try in the future. Note that "Known Human Game Inputs" should
-        never be changed as these are provided by the game itself.
+        never be changed as these are provided by the game itself. You can update
+        "Main Goal" if you discover the overall game objective.
         
         Be as specific as possible in the Action Log, indicating what input was tried,
         the outcome, and your confidence level. Remember that certain actions might
@@ -204,27 +206,14 @@ class MultimodalAgent:
         self.action_history: List[GameActionRecord] = []
         
         # Memory for the agent
-        self._memory_prompt = ""
+        self.memory = GameMemory()
         self._previous_action: Optional[Dict[str, Any]] = None
         self._previous_images: List[Image.Image] = []
         self._previous_score = 0
         
     def _initialize_memory(self, available_actions: List[str]):
         """Initialize the agent's memory with game info"""
-        human_inputs = get_human_inputs_text(available_actions)
-        self._memory_prompt = dedent(f"""\
-            ## Known Human Game Inputs
-            {human_inputs}
-                                     
-            ## Current Goal
-            Use the known human game inputs to interact with the game environment and learn the rules.
-                                     
-            ## Game Rules
-            Nothing is known currently other than this is a turn-based game that I need to solve.
-                                     
-            ## Action Log
-            No actions taken so far.
-        """).strip()
+        self.memory.initialize(available_actions)
     
     def _extract_usage(self, response: Any) -> tuple[int, int]:
         """Extract token usage from provider response"""
@@ -315,7 +304,8 @@ class MultimodalAgent:
         if current_score > self._previous_score:
             level_complete = "NEW LEVEL!!!! - Whatever you did must have been good!"
         
-        analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{self._memory_prompt}"
+        memory_prompt = self.memory.to_prompt_text(HUMAN_ACTIONS)
+        analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{memory_prompt}"
         
         # Build images: previous last frame, current frames, diff
         all_imgs = [
@@ -356,10 +346,8 @@ class MultimodalAgent:
         analysis_message = self._extract_content(response)
         logger.info(f"Analysis: {analysis_message[:200]}...")
         
-        before, _, after = analysis_message.partition("---")
-        analysis = before.strip()
-        if after.strip():
-            self._memory_prompt = after.strip()
+        # Update memory from LLM analysis response
+        analysis = self.memory.update_from_analysis(analysis_message)
         
         return analysis
     
@@ -369,10 +357,11 @@ class MultimodalAgent:
         analysis: str
     ) -> Dict[str, Any]:
         """Choose the next human-level action"""
+        memory_prompt = self.memory.to_prompt_text(HUMAN_ACTIONS)
         if len(analysis) > 20:
-            prompt = f"{analysis}\n\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            prompt = f"{analysis}\n\n{memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         else:
-            prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            prompt = f"{memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         
         messages = [
             {"role": "system", "content": self.SYSTEM_PROMPT},
@@ -531,6 +520,17 @@ class MultimodalAgent:
                     result_state=current_state,
                 )
                 self.action_history.append(action_record)
+                
+                # Update memory with action log entry
+                self.memory.add_action_log_entry(
+                    action_num=self.action_counter + 1,
+                    action_description=human_action,
+                    action_type=action_name,
+                    expected_result=human_action_dict.get("expected_result"),
+                    actual_result=analysis[:200] if analysis else None,
+                    outcome="level_complete" if new_score > current_score else "ongoing",
+                    observations=analysis[:200] if analysis else None
+                )
                 
                 # Update tracking
                 self._previous_action = human_action_dict
