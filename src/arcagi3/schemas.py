@@ -73,6 +73,7 @@ class GameResult(BaseModel):
     total_cost: "Cost"
     usage: "Usage"
     actions: List[GameActionRecord]
+    final_memory: Optional[str] = None
     timestamp: datetime = None
     scorecard_url: Optional[str] = None
     
