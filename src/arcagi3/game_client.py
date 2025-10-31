@@ -10,6 +10,8 @@ from typing import Dict, Any, List, Optional
 import requests
 from requests import Response, Session
 
+from .utils.retry import retry_with_exponential_backoff
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,7 @@ class GameClient:
         self._session = Session()
         self._session.headers.update(self.headers)
     
+    @retry_with_exponential_backoff(max_retries=3)
     def list_games(self) -> List[Dict[str, str]]:
         """
         Get list of available games.
@@ -60,6 +63,7 @@ class GameClient:
         
         return response.json()
     
+    @retry_with_exponential_backoff(max_retries=3)
     def open_scorecard(self, game_ids: List[str], card_id: Optional[str] = None, tags: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Open a new scorecard for tracking game progress.
@@ -90,6 +94,7 @@ class GameClient:
         
         return response.json()
     
+    @retry_with_exponential_backoff(max_retries=3)
     def close_scorecard(self, card_id: str) -> Dict[str, Any]:
         """
         Close a scorecard.
@@ -111,6 +116,7 @@ class GameClient:
         
         return response.json()
     
+    @retry_with_exponential_backoff(max_retries=3)
     def get_scorecard(self, card_id: str, game_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Retrieve scorecard information.
@@ -135,6 +141,7 @@ class GameClient:
         
         return response.json()
     
+    @retry_with_exponential_backoff(max_retries=3)
     def execute_action(
         self,
         action: str,
