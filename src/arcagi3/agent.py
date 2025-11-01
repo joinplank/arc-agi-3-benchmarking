@@ -64,23 +64,74 @@ def extract_json_from_response(response_text: str) -> Dict[str, Any]:
     """
     import re
     
-    # Try fenced ```json ... ``` blocks
-    fence = re.search(r"```json\s*(\{.*?\})\s*```", response_text, re.S | re.I)
+    if not response_text or not response_text.strip():
+        raise ValueError("Empty response text")
+    
+    # Try fenced ```json ... ``` blocks (with better regex for multiline)
+    fence = re.search(r"```json\s*(\{.*?\})\s*```", response_text, re.S | re.I | re.M)
     if fence:
-        json_str = fence.group(1)
+        json_str = fence.group(1).strip()
     else:
         # Try any ``` ... ``` fence
-        fence = re.search(r"```\s*(\{.*?\})\s*```", response_text, re.S)
+        fence = re.search(r"```[a-z]*\s*(\{.*?\})\s*```", response_text, re.S | re.M)
         if fence:
-            json_str = fence.group(1)
+            json_str = fence.group(1).strip()
         else:
-            # Fallback: first '{' to last '}'
-            start, end = response_text.find("{"), response_text.rfind("}")
-            if start == -1 or end == -1 or end <= start:
-                raise ValueError("No JSON object detected in response")
-            json_str = response_text[start : end + 1]
+            # Fallback: find the first '{' and match balanced braces
+            start = response_text.find("{")
+            if start == -1:
+                raise ValueError(f"No JSON object detected in response. Response was: {response_text[:200]}")
+            
+            # Find matching closing brace, skipping strings to avoid false matches
+            brace_count = 0
+            end = start
+            in_string = False
+            escape_next = False
+            
+            for i in range(start, len(response_text)):
+                char = response_text[i]
+                
+                if escape_next:
+                    escape_next = False
+                    continue
+                
+                if char == '\\':
+                    escape_next = True
+                    continue
+                
+                if char == '"' and not in_string:
+                    in_string = True
+                elif char == '"' and in_string:
+                    in_string = False
+                elif not in_string:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end = i
+                            break
+            
+            if brace_count != 0:
+                # If we couldn't find balanced braces, the JSON might be truncated
+                # Try to get what we have and let json.loads fail with a better error
+                logger.warning(f"Unbalanced braces in JSON (count: {brace_count}). JSON might be truncated.")
+                json_str = response_text[start:].strip()
+                # Try to close the JSON
+                json_str = json_str.rstrip() + "}"
+            else:
+                json_str = response_text[start : end + 1].strip()
     
-    return json.loads(json_str)
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        # Clean control characters and try again
+        try:
+            import unicodedata
+            cleaned = ''.join(char if unicodedata.category(char)[0] != 'C' or char in '\n\r\t' else ' ' for char in json_str)
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            raise ValueError(f"Failed to parse JSON: {e}. JSON string was: {json_str[:200]}")
 
 
 class MultimodalAgent:
@@ -228,6 +279,12 @@ class MultimodalAgent:
     
     def _extract_usage(self, response: Any) -> tuple[int, int]:
         """Extract token usage from provider response"""
+        # Check if it's a stream - streams don't have usage info immediately
+        if 'Stream' in str(type(response)):
+            # For streams, we can't get usage info
+            # Return 0,0 for now - usage will need to be tracked differently
+            return 0, 0
+        
         # OpenAI format
         if hasattr(response, 'usage'):
             if hasattr(response.usage, 'prompt_tokens'):
@@ -239,14 +296,40 @@ class MultimodalAgent:
     
     def _extract_content(self, response: Any) -> str:
         """Extract text content from provider response"""
-        # OpenAI format
+        # Check if it's an OpenAI stream - consume it first
+        if 'Stream' in str(type(response)):
+            # Consume the stream and get the final response
+            logger.debug("Consuming OpenAI stream...")
+            full_content = []
+            try:
+                for chunk in response:
+                    if hasattr(chunk, 'choices') and chunk.choices:
+                        delta = chunk.choices[0].delta
+                        if hasattr(delta, 'content') and delta.content:
+                            full_content.append(delta.content)
+                return ''.join(full_content)
+            except Exception as e:
+                logger.error(f"Error consuming stream: {e}")
+                return ""
+        
+        # OpenAI format - keep it simple like original
         if hasattr(response, 'choices') and response.choices:
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            if content is None:
+                logger.warning("OpenAI returned None content")
+                return ""
+            return content
         # Anthropic format
         elif hasattr(response, 'content') and response.content:
+            text_parts = []
             for block in response.content:
                 if hasattr(block, 'text'):
-                    return block.text
+                    text_parts.append(block.text)
+                elif isinstance(block, dict) and block.get('type') == 'text':
+                    text_parts.append(block.get('text', ''))
+            return ''.join(text_parts)
+        
+        logger.warning(f"Unknown response format. Type: {type(response)}")
         return ""
     
     def _update_costs(self, prompt_tokens: int, completion_tokens: int):
@@ -266,6 +349,40 @@ class MultimodalAgent:
         self.total_usage.completion_tokens += completion_tokens
         self.total_usage.total_tokens += prompt_tokens + completion_tokens
     
+    def _convert_image_blocks_for_anthropic(self, content: Any) -> Any:
+        """Convert OpenAI-style image_url blocks to Anthropic format"""
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, list):
+            converted = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "image_url":
+                        # Convert from OpenAI format to Anthropic format
+                        image_url = block.get("image_url", {})
+                        url = image_url.get("url", "")
+                        
+                        # Extract base64 data from data URL
+                        if url.startswith("data:image/png;base64,"):
+                            base64_data = url[len("data:image/png;base64,"):]
+                            converted.append({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/png",
+                                    "data": base64_data
+                                }
+                            })
+                        else:
+                            # Keep as is if not base64
+                            converted.append(block)
+                    else:
+                        converted.append(block)
+                else:
+                    converted.append(block)
+            return converted
+        return content
+    
     @retry_with_exponential_backoff(max_retries=3)
     def _call_provider(self, messages: List[Dict[str, Any]]) -> Any:
         """Call provider with retry logic"""
@@ -280,11 +397,43 @@ class MultimodalAgent:
                 **self.provider.model_config.kwargs
             )
         elif provider_name == "anthropic":
-            # Anthropic has different message format - extract text and images
+            # Anthropic requires system messages as separate parameter, not in messages array
+            # Extract system messages and filter them out
+            system_messages = []
+            filtered_messages = []
+            
+            for msg in messages:
+                if msg.get("role") == "system":
+                    # Anthropic system can be string or list of content blocks
+                    content = msg.get("content", "")
+                    if isinstance(content, str):
+                        system_messages.append(content)
+                    elif isinstance(content, list):
+                        # Extract text from content blocks
+                        text_parts = []
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text_parts.append(block.get("text", ""))
+                        if text_parts:
+                            system_messages.append("\n".join(text_parts))
+                else:
+                    # Convert image blocks for Anthropic
+                    msg_copy = dict(msg)
+                    msg_copy["content"] = self._convert_image_blocks_for_anthropic(msg.get("content"))
+                    filtered_messages.append(msg_copy)
+            
+            # Combine system messages
+            system_content = "\n".join(system_messages) if system_messages else None
+            
+            # Prepare kwargs
+            anthropic_kwargs = dict(self.provider.model_config.kwargs)
+            if system_content:
+                anthropic_kwargs["system"] = system_content
+            
             return self.provider.client.messages.create(
                 model=self.provider.model_config.model_name,
-                messages=messages,
-                **self.provider.model_config.kwargs
+                messages=filtered_messages,
+                **anthropic_kwargs
             )
         else:
             # For other providers, try OpenAI-compatible format
@@ -394,7 +543,13 @@ class MultimodalAgent:
         action_message = self._extract_content(response)
         logger.info(f"Human action: {action_message[:200]}...")
         
-        return extract_json_from_response(action_message)
+        try:
+            return extract_json_from_response(action_message)
+        except ValueError as e:
+            logger.error(f"Failed to extract JSON from response: {e}")
+            logger.debug(f"Full response: {action_message}")
+            # Re-raise to be caught by game loop
+            raise
     
     def _convert_to_game_action(
         self,
@@ -425,7 +580,12 @@ class MultimodalAgent:
         action_message = self._extract_content(response)
         logger.info(f"Game action: {action_message[:200]}...")
         
-        return extract_json_from_response(action_message)
+        try:
+            return extract_json_from_response(action_message)
+        except ValueError as e:
+            logger.error(f"Failed to extract JSON from game action response: {e}")
+            logger.debug(f"Full response: {action_message}")
+            raise
     
     def _execute_game_action(
         self,
