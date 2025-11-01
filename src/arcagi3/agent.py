@@ -432,7 +432,8 @@ class MultimodalAgent:
         action_name: str,
         action_data: Optional[Dict[str, Any]],
         game_id: str,
-        guid: Optional[str]
+        guid: Optional[str],
+        reasoning: Optional[str] = None
     ) -> Dict[str, Any]:
         """Execute action via game client"""
         data = {"game_id": game_id}
@@ -440,6 +441,8 @@ class MultimodalAgent:
             data["guid"] = guid
         if action_data:
             data.update(action_data)
+        if reasoning:
+            data["reasoning"] = reasoning
         
         return self.game_client.execute_action(action_name, data)
     
@@ -510,8 +513,8 @@ class MultimodalAgent:
                         "y": max(0, min(y, 127)) // 2,
                     }
                 
-                # Execute action
-                state = self._execute_game_action(action_name, action_data_dict, game_id, guid)
+                reasoning_for_api = human_action_dict.get("reasoning", "")
+                state = self._execute_game_action(action_name, action_data_dict, game_id, guid, reasoning_for_api)
                 guid = state.get("guid", guid)
                 new_score = state.get("score", current_score)
                 current_state = state.get("state", "IN_PROGRESS")
@@ -548,9 +551,9 @@ class MultimodalAgent:
                 logger.error(f"Error during game loop: {e}", exc_info=True)
                 break
         
-        # Create result
         duration = time.time() - start_time
         scorecard_url = f"{self.game_client.ROOT_URL}/scorecards/{self.card_id}"
+        final_memory = self._memory_prompt
         
         result = GameResult(
             game_id=game_id,
@@ -562,6 +565,7 @@ class MultimodalAgent:
             total_cost=self.total_cost,
             usage=self.total_usage,
             actions=self.action_history,
+            final_memory=final_memory,
             timestamp=datetime.now(timezone.utc),
             scorecard_url=scorecard_url
         )
