@@ -42,6 +42,16 @@ def retry_with_exponential_backoff(
                 except exceptions as e:
                     last_exception = e
                     
+                    # Check if this is a GameClientError with a non-retryable status code
+                    # Status codes 400, 401, 403, 404 should not be retried
+                    if hasattr(e, 'status_code') and e.status_code is not None:
+                        if e.status_code in [400, 401, 403, 404]:
+                            logger.error(
+                                f"Function {func.__name__} failed with non-retryable status code {e.status_code}. "
+                                f"Not retrying. Error: {type(e).__name__}: {str(e)}"
+                            )
+                            raise
+                    
                     if attempt == max_retries:
                         logger.error(
                             f"Function {func.__name__} failed after {max_retries} retries. "
@@ -129,4 +139,41 @@ class RetryConfig:
         self.initial_delay = initial_delay
         self.backoff_factor = backoff_factor
         self.max_delay = max_delay
+
+
+# Convenience retry decorators for common scenarios
+def retry_on_provider_error(max_retries: int = 3):
+    """Retry on ProviderError (rate limits, temporary API issues)."""
+    from arcagi3.errors import ProviderError
+    return retry_with_exponential_backoff(
+        max_retries=max_retries,
+        initial_delay=1.0,
+        backoff_factor=2.0,
+        max_delay=30.0,
+        exceptions=(ProviderError,)
+    )
+
+
+def retry_on_game_client_error(max_retries: int = 3):
+    """Retry on GameClientError (temporary network issues with ARC-AGI-3 API)."""
+    from arcagi3.errors import GameClientError
+    return retry_with_exponential_backoff(
+        max_retries=max_retries,
+        initial_delay=0.5,
+        backoff_factor=1.5,
+        max_delay=10.0,
+        exceptions=(GameClientError,)
+    )
+
+
+def retry_on_network_error(max_retries: int = 5):
+    """Retry on both ProviderError and GameClientError (all network-related)."""
+    from arcagi3.errors import ProviderError, GameClientError
+    return retry_with_exponential_backoff(
+        max_retries=max_retries,
+        initial_delay=1.0,
+        backoff_factor=2.0,
+        max_delay=60.0,
+        exceptions=(ProviderError, GameClientError)
+    )
 

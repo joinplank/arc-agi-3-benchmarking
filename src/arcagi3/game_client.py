@@ -9,6 +9,9 @@ import os
 from typing import Dict, Any, List, Optional
 import requests
 from requests import Response, Session
+from requests.exceptions import HTTPError, RequestException
+
+from .errors import GameClientError
 
 from .utils.retry import retry_with_exponential_backoff
 
@@ -48,6 +51,9 @@ class GameClient:
         Returns:
             List of game dictionaries with 'game_id' and 'title'
             
+        Raises:
+            GameClientError: If API communication fails
+            
         Example response:
             [
                 {"game_id": "ls20-016295f7601e", "title": "LS20"},
@@ -55,13 +61,22 @@ class GameClient:
             ]
         """
         url = f"{self.ROOT_URL}/api/games"
-        response = self._session.get(url)
         
-        if response.status_code != 200:
-            logger.error(f"Failed to list games: {response.text}")
-            response.raise_for_status()
-        
-        return response.json()
+        try:
+            response = self._session.get(url)
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to list games: {response.text}")
+                raise GameClientError(
+                    message=f"Failed to list games: HTTP {response.status_code}",
+                    status_code=response.status_code,
+                    response_body=response.text,
+                    endpoint=url
+                )
+            
+            return response.json()
+        except (HTTPError, RequestException) as e:
+            raise GameClientError.from_http_error(e, endpoint=url)
     
     @retry_with_exponential_backoff(max_retries=3)
     def open_scorecard(self, game_ids: List[str], card_id: Optional[str] = None, tags: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -156,23 +171,33 @@ class GameClient:
             
         Returns:
             Game state response from API
+            
+        Raises:
+            GameClientError: If API communication fails
         """
         url = f"{self.ROOT_URL}/api/cmd/{action}"
-        
         action_data = data or {}
         
-        response = self._session.post(url, json=action_data)
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to execute action {action}: {response.text}")
-            response.raise_for_status()
-        
-        response_data = response.json()
-        
-        if "error" in response_data:
-            logger.warning(f"API returned error for action {action}: {response_data['error']}")
-        
-        return response_data
+        try:
+            response = self._session.post(url, json=action_data)
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to execute action {action}: {response.text}")
+                raise GameClientError(
+                    message=f"Failed to execute action {action}: HTTP {response.status_code}",
+                    status_code=response.status_code,
+                    response_body=response.text,
+                    endpoint=url
+                )
+            
+            response_data = response.json()
+            
+            if "error" in response_data:
+                logger.warning(f"API returned error for action {action}: {response_data['error']}")
+            
+            return response_data
+        except (HTTPError, RequestException) as e:
+            raise GameClientError.from_http_error(e, endpoint=url)
     
     def reset_game(self, card_id: str, game_id: str, guid: Optional[str] = None) -> Dict[str, Any]:
         """
