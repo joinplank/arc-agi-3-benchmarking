@@ -24,6 +24,7 @@ from .schemas import (
     Cost,
     Usage,
     CompletionTokensDetails,
+    APIType,
 )
 from .utils.retry import retry_with_exponential_backoff
 
@@ -246,6 +247,14 @@ class MultimodalAgent:
         # Initialize provider adapter
         self.provider = create_provider(config)
         
+        # Check if model supports multimodal capabilities (required for this agent)
+        if not self.provider.model_config.multimodal:
+            raise ValueError(
+                f"Model '{self.provider.model_config.name}' does not support multimodal/vision capabilities. "
+                f"The multimodal agent requires a model with image support. "
+                f"Please use a model with 'multimodal: true' in the configuration (e.g., gpt-4o-mini-2024-07-18)."
+            )
+        
         # Tracking variables
         self.action_counter = 0
         self.total_cost = Cost(prompt_cost=0.0, completion_cost=0.0, total_cost=0.0)
@@ -282,19 +291,15 @@ class MultimodalAgent:
     
     def _extract_usage(self, response: Any) -> tuple[int, int]:
         """Extract token usage from provider response"""
-        # Check if it's a stream - streams don't have usage info immediately
         if 'Stream' in str(type(response)):
-            # For streams, we can't get usage info
-            # Return 0,0 for now - usage will need to be tracked differently
             return 0, 0
         
-        # OpenAI format
         if hasattr(response, 'usage'):
             if hasattr(response.usage, 'prompt_tokens'):
                 return response.usage.prompt_tokens, response.usage.completion_tokens
-            # Anthropic format
             elif hasattr(response.usage, 'input_tokens'):
-                return response.usage.input_tokens, response.usage.output_tokens
+                output_tokens = getattr(response.usage, 'output_tokens', 0)
+                return response.usage.input_tokens, output_tokens
         return 0, 0
     
     def _extract_content(self, response: Any) -> str:
@@ -315,13 +320,21 @@ class MultimodalAgent:
                 logger.error(f"Error consuming stream: {e}")
                 return ""
         
-        # OpenAI format - keep it simple like original
+        # OpenAI Chat Completions format
         if hasattr(response, 'choices') and response.choices:
             content = response.choices[0].message.content
             if content is None:
                 logger.warning("OpenAI returned None content")
                 return ""
             return content
+        # OpenAI Responses API format
+        elif hasattr(response, 'output_text'):
+            return response.output_text or ""
+        elif hasattr(response, 'output') and response.output:
+            # Fallback for Responses API - get first text block
+            if hasattr(response.output[0], 'content') and response.output[0].content:
+                if hasattr(response.output[0].content[0], 'text'):
+                    return response.output[0].content[0].text or ""
         # Anthropic format
         elif hasattr(response, 'content') and response.content:
             text_parts = []
@@ -386,33 +399,92 @@ class MultimodalAgent:
             return converted
         return content
     
+    def _convert_image_blocks_for_responses_api(self, content: Any) -> Any:
+        """Convert OpenAI Chat Completions blocks to Responses API format"""
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, list):
+            converted = []
+            for block in content:
+                if isinstance(block, dict):
+                    block_type = block.get("type")
+                    if block_type == "image_url":
+                        # For Responses API, image_url should be a string URL directly
+                        image_url = block.get("image_url", {})
+                        if isinstance(image_url, dict):
+                            url = image_url.get("url", "")
+                        else:
+                            url = image_url
+
+                        if url.startswith("data:image/"):
+                            converted.append({
+                                "type": "input_image",
+                                "image_url": url
+                            })
+                        else:
+                            converted.append(block)
+                    elif block_type == "text":
+                        converted.append({
+                            "type": "input_text",
+                            "text": block.get("text", "")
+                        })
+                    else:
+                        converted.append(block)
+                else:
+                    converted.append(block)
+            return converted
+        return content
+    
     @retry_with_exponential_backoff(max_retries=3)
     def _call_provider(self, messages: List[Dict[str, Any]]) -> Any:
         """Call provider with retry logic"""
-        # Use the provider's client directly for multimodal support
-        # Most providers follow OpenAI-style API
         provider_name = self.provider.model_config.provider
         
         if provider_name == "openai":
-            return self.provider.client.chat.completions.create(
-                model=self.provider.model_config.model_name,
-                messages=messages,
-                **self.provider.model_config.kwargs
+            has_images = any(
+                isinstance(msg.get("content"), list) and 
+                any(isinstance(block, dict) and block.get("type") == "image_url" 
+                    for block in msg.get("content", []))
+                for msg in messages
             )
+            
+            if hasattr(self.provider.model_config, 'api_type') and self.provider.model_config.api_type == APIType.RESPONSES:
+                responses_kwargs = dict(self.provider.model_config.kwargs)
+                if "max_tokens" in responses_kwargs:
+                    responses_kwargs["max_output_tokens"] = responses_kwargs.pop("max_tokens")
+                if "max_completion_tokens" in responses_kwargs:
+                    responses_kwargs["max_output_tokens"] = responses_kwargs.pop("max_completion_tokens")
+
+                # Convert messages to Responses API format
+                converted_messages = []
+                for msg in messages:
+                    converted_msg = dict(msg)
+                    if isinstance(msg.get("content"), list):
+                        converted_msg["content"] = self._convert_image_blocks_for_responses_api(msg["content"])
+                    # For string content (like system messages), keep as-is
+                    converted_messages.append(converted_msg)
+
+                return self.provider.client.responses.create(
+                    model=self.provider.model_config.model_name,
+                    input=converted_messages,
+                    **responses_kwargs
+                )
+            else:
+                return self.provider.client.chat.completions.create(
+                    model=self.provider.model_config.model_name,
+                    messages=messages,
+                    **self.provider.model_config.kwargs
+                )
         elif provider_name == "anthropic":
-            # Anthropic requires system messages as separate parameter, not in messages array
-            # Extract system messages and filter them out
             system_messages = []
             filtered_messages = []
             
             for msg in messages:
                 if msg.get("role") == "system":
-                    # Anthropic system can be string or list of content blocks
                     content = msg.get("content", "")
                     if isinstance(content, str):
                         system_messages.append(content)
                     elif isinstance(content, list):
-                        # Extract text from content blocks
                         text_parts = []
                         for block in content:
                             if isinstance(block, dict) and block.get("type") == "text":
@@ -420,15 +492,12 @@ class MultimodalAgent:
                         if text_parts:
                             system_messages.append("\n".join(text_parts))
                 else:
-                    # Convert image blocks for Anthropic
                     msg_copy = dict(msg)
                     msg_copy["content"] = self._convert_image_blocks_for_anthropic(msg.get("content"))
                     filtered_messages.append(msg_copy)
             
-            # Combine system messages
             system_content = "\n".join(system_messages) if system_messages else None
             
-            # Prepare kwargs
             anthropic_kwargs = dict(self.provider.model_config.kwargs)
             if system_content:
                 anthropic_kwargs["system"] = system_content
@@ -439,7 +508,6 @@ class MultimodalAgent:
                 **anthropic_kwargs
             )
         else:
-            # For other providers, try OpenAI-compatible format
             try:
                 return self.provider.client.chat.completions.create(
                     model=self.provider.model_config.model_name,
@@ -447,7 +515,6 @@ class MultimodalAgent:
                     **self.provider.model_config.kwargs
                 )
             except AttributeError:
-                # Fallback to direct client call
                 return self.provider.client.create(
                     model=self.provider.model_config.model_name,
                     messages=messages,
@@ -627,16 +694,16 @@ class MultimodalAgent:
         
         for play_num in range(1, self.num_plays + 1):
             play_start_time = time.time()
-            
+
             if play_num > 1:
                 logger.info(f"Starting play {play_num}/{self.num_plays} (continuing session with memory)")
-            
+
             # Reset game (use guid to continue session if not first play)
             state = self.game_client.reset_game(self.card_id, game_id, guid=guid)
             guid = state.get("guid")
             current_score = state.get("score", 0)
             current_state = state.get("state", "IN_PROGRESS")
-            
+
             # Initialize memory only on first play, otherwise keep existing memory
             if play_num == 1:
                 available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
@@ -658,9 +725,8 @@ class MultimodalAgent:
                     if not frames:
                         logger.warning("No frames in state, breaking")
                         break
-                    
+
                     frame_images = [grid_to_image(frame) for frame in frames]
-                    
                     analysis = self._analyze_previous_action(frame_images, current_score)
                     
                     human_action_dict = self._choose_human_action(frame_images, analysis)

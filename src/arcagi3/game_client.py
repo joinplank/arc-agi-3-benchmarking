@@ -58,7 +58,7 @@ class GameClient:
         @retry_with_exponential_backoff(max_retries=self.max_retries)
         def _call():
             url = f"{self.ROOT_URL}/api/games"
-            response = self._session.get(url)
+            response = self._session.get(url, timeout=30)
             if response.status_code != 200:
                 logger.error(f"Failed to list games: {response.text}")
                 response.raise_for_status()
@@ -87,7 +87,7 @@ class GameClient:
                 data["game_ids"] = game_ids
             if tags:
                 data["tags"] = tags
-            response = self._session.post(url, json=data)
+            response = self._session.post(url, json=data, timeout=30)
             if response.status_code != 200:
                 logger.error(f"Failed to open scorecard: {response.text}")
                 response.raise_for_status()
@@ -108,7 +108,7 @@ class GameClient:
         def _call():
             url = f"{self.ROOT_URL}/api/scorecard/close"
             data = {"card_id": card_id}
-            response = self._session.post(url, json=data)
+            response = self._session.post(url, json=data, timeout=30)
             if response.status_code != 200:
                 logger.error(f"Failed to close scorecard: {response.text}")
                 response.raise_for_status()
@@ -132,7 +132,7 @@ class GameClient:
                 url = f"{self.ROOT_URL}/api/scorecard/{card_id}/{game_id}"
             else:
                 url = f"{self.ROOT_URL}/api/scorecard/{card_id}"
-            response = self._session.get(url, timeout=5)
+            response = self._session.get(url, timeout=30)
             if response.status_code != 200:
                 logger.error(f"Failed to get scorecard: {response.text}")
                 response.raise_for_status()
@@ -158,7 +158,7 @@ class GameClient:
         def _call():
             url = f"{self.ROOT_URL}/api/cmd/{action}"
             action_data = data or {}
-            response = self._session.post(url, json=action_data)
+            response = self._session.post(url, json=action_data, timeout=30)
             if response.status_code != 200:
                 logger.error(f"Failed to execute action {action}: {response.text}")
                 response.raise_for_status()

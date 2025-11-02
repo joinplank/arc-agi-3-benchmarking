@@ -9,10 +9,20 @@ models:
     model_name: "gpt-5-pro-2025-10-06"
     provider: "openai"
     api_type: "responses"
-    background: true
-    reasoning:
-      summary: "auto"
+    multimodal: true
+    stream: true
     max_completion_tokens: 272000
+    pricing:
+      date: "2025-10-06"
+      input: 15.00
+      output: 120.00
+
+  - name: "gpt-5-pro-2025-10-06-chat"
+    model_name: "gpt-5-pro-2025-10-06"
+    provider: "openai"
+    multimodal: true
+    stream: true
+    max_completion_tokens: 16384
     pricing:
       date: "2025-10-06"
       input: 15.00
@@ -365,7 +375,7 @@ models:
   - name: "gpt-4o-mini-2024-07-18"
     model_name: "gpt-4o-mini-2024-07-18"
     provider: "openai"
-    api_type: "responses"
+    multimodal: true
     max_completion_tokens: 8000
     pricing:
       date: "2025-03-15"
