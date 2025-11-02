@@ -1,4 +1,4 @@
-"""Utility functions for ARC-AGI-3 benchmarking"""
+"""Utility functions for ARC-AGI-3 benchmarking."""
 
 from .task_utils import (
     read_models_config,
