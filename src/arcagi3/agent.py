@@ -223,6 +223,7 @@ class MultimodalAgent:
         card_id: str,
         max_actions: int = 40,
         retry_attempts: int = 3,
+        num_plays: int = 1,
     ):
         """
         Initialize the multimodal agent.
@@ -233,12 +234,14 @@ class MultimodalAgent:
             card_id: Scorecard identifier
             max_actions: Maximum actions to take before stopping
             retry_attempts: Number of retry attempts for failed API calls
+            num_plays: Number of times to play the game (continues session with memory)
         """
         self.config = config
         self.game_client = game_client
         self.card_id = card_id
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
+        self.num_plays = num_plays
         
         # Initialize provider adapter
         self.provider = create_provider(config)
@@ -614,126 +617,166 @@ class MultimodalAgent:
             game_id: Game identifier to play
             
         Returns:
-            GameResult with complete game information
+            GameResult with complete game information (best result if multiple plays)
         """
-        logger.info(f"Starting game {game_id} with config {self.config}")
-        start_time = time.time()
+        logger.info(f"Starting game {game_id} with config {self.config} ({self.num_plays} play(s))")
+        overall_start_time = time.time()
         
-        # Reset game
-        state = self.game_client.reset_game(self.card_id, game_id)
-        guid = state.get("guid")
-        current_score = state.get("score", 0)
-        current_state = state.get("state", "IN_PROGRESS")
+        best_result: Optional[GameResult] = None
+        guid: Optional[str] = None
         
-        # Initialize memory with available actions
-        available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
-        self._initialize_memory(available_actions)
-        
-        # Main game loop
-        while (
-            current_state not in ["WIN", "GAME_OVER"]
-            and self.action_counter < self.max_actions
-        ):
-            try:
-                # Convert frames to images
-                frames = state.get("frame", [])
-                if not frames:
-                    logger.warning("No frames in state, breaking")
+        for play_num in range(1, self.num_plays + 1):
+            play_start_time = time.time()
+            
+            if play_num > 1:
+                logger.info(f"Starting play {play_num}/{self.num_plays} (continuing session with memory)")
+            
+            # Reset game (use guid to continue session if not first play)
+            state = self.game_client.reset_game(self.card_id, game_id, guid=guid)
+            guid = state.get("guid")
+            current_score = state.get("score", 0)
+            current_state = state.get("state", "IN_PROGRESS")
+            
+            # Initialize memory only on first play, otherwise keep existing memory
+            if play_num == 1:
+                available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
+                self._initialize_memory(available_actions)
+            else:
+                logger.info(f"Continuing with memory from previous play(s)")
+            
+            # Reset play-specific counters (but keep cumulative cost/usage)
+            play_action_counter = 0
+            play_action_history: List[GameActionRecord] = []
+            
+            # Main game loop
+            while (
+                current_state not in ["WIN", "GAME_OVER"]
+                and play_action_counter < self.max_actions
+            ):
+                try:
+                    frames = state.get("frame", [])
+                    if not frames:
+                        logger.warning("No frames in state, breaking")
+                        break
+                    
+                    frame_images = [grid_to_image(frame) for frame in frames]
+                    
+                    analysis = self._analyze_previous_action(frame_images, current_score)
+                    
+                    human_action_dict = self._choose_human_action(frame_images, analysis)
+                    human_action = human_action_dict.get("human_action")
+                    
+                    if not human_action:
+                        logger.error("No human_action in response")
+                        break
+                    
+                    game_action_dict = self._convert_to_game_action(human_action, frame_images[-1])
+                    action_name = game_action_dict.get("action")
+                    
+                    if not action_name:
+                        logger.error("No action name in response")
+                        break
+                    
+                    action_data_dict = {}
+                    if action_name == "ACTION6":
+                        x = game_action_dict.get("x", 0)
+                        y = game_action_dict.get("y", 0)
+                        action_data_dict = {
+                            "x": max(0, min(x, 127)) // 2,
+                            "y": max(0, min(y, 127)) // 2,
+                        }
+                    
+                    reasoning_for_api = human_action_dict.get("reasoning", "")
+                    state = self._execute_game_action(action_name, action_data_dict, game_id, guid, reasoning_for_api)
+                    guid = state.get("guid", guid)
+                    new_score = state.get("score", current_score)
+                    current_state = state.get("state", "IN_PROGRESS")
+                    
+                    action_record = GameActionRecord(
+                        action_num=self.action_counter + play_action_counter + 1,
+                        action=action_name,
+                        action_data=ActionData(**action_data_dict) if action_data_dict else None,
+                        reasoning={
+                            "human_action": human_action,
+                            "reasoning": human_action_dict.get("reasoning", ""),
+                            "expected": human_action_dict.get("expected_result", ""),
+                            "analysis": analysis[:500] if len(analysis) > 500 else analysis,
+                        },
+                        result_score=new_score,
+                        result_state=current_state,
+                    )
+                    play_action_history.append(action_record)
+                    self.action_history.append(action_record)
+                    
+                    self._previous_action = human_action_dict
+                    self._previous_images = frame_images
+                    self._previous_score = current_score
+                    current_score = new_score
+                    play_action_counter += 1
+                    self.action_counter += 1
+                    
+                    logger.info(
+                        f"Play {play_num}, Action {play_action_counter}: {action_name}, "
+                        f"Score: {current_score}, State: {current_state}"
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"Error during game loop: {e}", exc_info=True)
                     break
-                
-                frame_images = [grid_to_image(frame) for frame in frames]
-                
-                # Analyze previous action if exists
-                analysis = self._analyze_previous_action(frame_images, current_score)
-                
-                # Choose next action
-                human_action_dict = self._choose_human_action(frame_images, analysis)
-                human_action = human_action_dict.get("human_action")
-                
-                if not human_action:
-                    logger.error("No human_action in response")
-                    break
-                
-                # Convert to game action
-                game_action_dict = self._convert_to_game_action(human_action, frame_images[-1])
-                action_name = game_action_dict.get("action")
-                
-                if not action_name:
-                    logger.error("No action name in response")
-                    break
-                
-                # Prepare action data
-                action_data_dict = {}
-                if action_name == "ACTION6":
-                    # Scale coordinates from 128x128 back to 64x64
-                    x = game_action_dict.get("x", 0)
-                    y = game_action_dict.get("y", 0)
-                    action_data_dict = {
-                        "x": max(0, min(x, 127)) // 2,
-                        "y": max(0, min(y, 127)) // 2,
-                    }
-                
-                reasoning_for_api = human_action_dict.get("reasoning", "")
-                state = self._execute_game_action(action_name, action_data_dict, game_id, guid, reasoning_for_api)
-                guid = state.get("guid", guid)
-                new_score = state.get("score", current_score)
-                current_state = state.get("state", "IN_PROGRESS")
-                
-                # Record action
-                action_record = GameActionRecord(
-                    action_num=self.action_counter + 1,
-                    action=action_name,
-                    action_data=ActionData(**action_data_dict) if action_data_dict else None,
-                    reasoning={
-                        "human_action": human_action,
-                        "reasoning": human_action_dict.get("reasoning", ""),
-                        "expected": human_action_dict.get("expected_result", ""),
-                        "analysis": analysis[:500] if len(analysis) > 500 else analysis,
-                    },
-                    result_score=new_score,
-                    result_state=current_state,
-                )
-                self.action_history.append(action_record)
-                
-                # Update tracking
-                self._previous_action = human_action_dict
-                self._previous_images = frame_images
-                self._previous_score = current_score
-                current_score = new_score
-                self.action_counter += 1
-                
-                logger.info(
-                    f"Action {self.action_counter}: {action_name}, "
-                    f"Score: {current_score}, State: {current_state}"
-                )
-                
-            except Exception as e:
-                logger.error(f"Error during game loop: {e}", exc_info=True)
+            
+            play_duration = time.time() - play_start_time
+            scorecard_url = f"{self.game_client.ROOT_URL}/scorecards/{self.card_id}"
+            
+            play_result = GameResult(
+                game_id=game_id,
+                config=self.config,
+                final_score=current_score,
+                final_state=current_state,
+                actions_taken=play_action_counter,
+                duration_seconds=play_duration,
+                total_cost=self.total_cost,
+                usage=self.total_usage,
+                actions=play_action_history,
+                final_memory=self._memory_prompt,
+                timestamp=datetime.now(timezone.utc),
+                scorecard_url=scorecard_url
+            )
+            
+            logger.info(
+                f"Play {play_num}/{self.num_plays} completed: {current_state}, "
+                f"Score: {current_score}, Actions: {play_action_counter}"
+            )
+            
+            # Track best result (WIN > highest score)
+            if best_result is None:
+                best_result = play_result
+            elif current_state == "WIN" and best_result.final_state != "WIN":
+                best_result = play_result
+            elif current_state == "WIN" and best_result.final_state == "WIN":
+                if current_score > best_result.final_score:
+                    best_result = play_result
+            elif current_score > best_result.final_score:
+                best_result = play_result
+            
+            # Stop if we won or no more plays
+            if current_state == "WIN":
+                logger.info(f"Game won on play {play_num}! Stopping early.")
                 break
+            
+            if play_num < self.num_plays:
+                logger.info(f"Play {play_num} ended ({current_state}). Continuing to next play...")
         
-        duration = time.time() - start_time
-        scorecard_url = f"{self.game_client.ROOT_URL}/scorecards/{self.card_id}"
-        final_memory = self._memory_prompt
+        overall_duration = time.time() - overall_start_time
         
-        result = GameResult(
-            game_id=game_id,
-            config=self.config,
-            final_score=current_score,
-            final_state=current_state,
-            actions_taken=self.action_counter,
-            duration_seconds=duration,
-            total_cost=self.total_cost,
-            usage=self.total_usage,
-            actions=self.action_history,
-            final_memory=final_memory,
-            timestamp=datetime.now(timezone.utc),
-            scorecard_url=scorecard_url
-        )
+        # Update best result with overall stats
+        best_result.actions_taken = self.action_counter
+        best_result.duration_seconds = overall_duration
         
         logger.info(
-            f"Game completed: {current_state}, Score: {current_score}, "
-            f"Actions: {self.action_counter}, Cost: ${self.total_cost.total_cost:.4f}"
+            f"All plays completed. Best: {best_result.final_state}, "
+            f"Score: {best_result.final_score}, Total Actions: {self.action_counter}, "
+            f"Cost: ${self.total_cost.total_cost:.4f}"
         )
         
-        return result
+        return best_result
 

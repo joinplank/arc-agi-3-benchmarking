@@ -69,6 +69,7 @@ async def run_single_game_wrapper(
     max_actions: int,
     retry_attempts: int,
     api_retries: int,
+    num_plays: int,
 ) -> bool:
     def _synchronous_game_execution():
         tester = ARC3Tester(
@@ -78,6 +79,7 @@ async def run_single_game_wrapper(
             max_actions=max_actions,
             retry_attempts=retry_attempts,
             api_retries=api_retries,
+            num_plays=num_plays,
         )
         result = tester.play_game(game_id)
         if result:
@@ -103,6 +105,7 @@ async def main(
     max_actions: int,
     retry_attempts: int,
     api_retries: int,
+    num_plays: int,
 ) -> int:
     start_time = time.perf_counter()
     timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -140,7 +143,7 @@ async def main(
             async_tasks_to_execute.append(
                 run_single_game_wrapper(
                     config_name, game_id, limiter, timestamp_dir,
-                    overwrite_results, max_actions, retry_attempts, api_retries
+                    overwrite_results, max_actions, retry_attempts, api_retries, num_plays
                 )
             )
         except Exception as e:
@@ -270,6 +273,12 @@ if __name__ == "__main__":
         help="Number of retry attempts for ARC-AGI-3 API calls (default: 3)",
     )
     parser.add_argument(
+        "--num_plays",
+        type=int,
+        default=1,
+        help="Number of times to play each game (continues session with memory) (default: 1)",
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -327,6 +336,7 @@ if __name__ == "__main__":
                 max_actions=args.max_actions,
                 retry_attempts=args.retry_attempts,
                 api_retries=args.retries,
+                num_plays=args.num_plays,
             )
         )
         sys.exit(exit_code)
