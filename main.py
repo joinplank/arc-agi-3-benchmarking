@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from arcagi3.agent import MultimodalAgent
 from arcagi3.game_client import GameClient
-from arcagi3.utils import read_models_config, save_result
+from arcagi3.utils import read_models_config, save_result, generate_scorecard_tags
 from arcagi3.schemas import GameResult
 
 
@@ -77,7 +77,9 @@ class ARC3Tester:
         # Note: Results are saved with unique timestamps, so multiple runs are allowed
         # Each run creates a new file: {game_id}_{config}_{timestamp}.json
         
-        scorecard_response = self.game_client.open_scorecard([game_id], card_id=card_id)
+        # Generate tags from model config for scorecard tracking
+        tags = generate_scorecard_tags(self.model_config)
+        scorecard_response = self.game_client.open_scorecard([game_id], card_id=card_id, tags=tags)
         card_id = scorecard_response.get("card_id", card_id)
         
         

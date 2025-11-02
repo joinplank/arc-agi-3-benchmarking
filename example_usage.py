@@ -12,7 +12,7 @@ load_dotenv()
 # Import the main components
 from src.arcagi3.agent import MultimodalAgent
 from src.arcagi3.game_client import GameClient
-from src.arcagi3.utils import read_models_config
+from src.arcagi3.utils import read_models_config, generate_scorecard_tags
 
 
 def example_single_game():
@@ -41,6 +41,8 @@ def example_single_game():
     config = "gpt-4o-mini-2024-07-18"  # Use a cheaper model for testing
     print(f"Using config: {config}")
     
+    # Open scorecard (tags are optional, but recommended for tracking)
+    # When using ARC3Tester, tags are automatically generated from model config
     scorecard_response = game_client.open_scorecard([game_id])
     card_id = scorecard_response.get("card_id")
     print(f"Scorecard created with card_id: {card_id}")
@@ -110,6 +112,35 @@ def example_model_configs():
         print(f"  {model['name']:<40} (Provider: {model['provider']})")
 
 
+def example_custom_tags():
+    """Example: Using custom tags with scorecards"""
+    print("\nExample 4: Custom scorecard tags")
+    print("=" * 60)
+    
+    config_name = "gpt-4o-mini-2024-07-18"
+    model_config = read_models_config(config_name)
+    
+    # Generate automatic tags from model config
+    auto_tags = generate_scorecard_tags(model_config)
+    
+    print(f"\nModel config: {config_name}")
+    print("\nAutomatically generated tags:")
+    for tag in auto_tags[:5]:  # Show first 5
+        print(f"  - {tag}")
+    if len(auto_tags) > 5:
+        print(f"  ... and {len(auto_tags) - 5} more")
+    
+    # You can also add custom tags for your experiments
+    custom_tags = auto_tags + ["experiment:baseline", "version:1.0"]
+    
+    print(f"\nWith custom experiment tags:")
+    for tag in custom_tags[-3:]:  # Show last 3
+        print(f"  - {tag}")
+    
+    print("\nNote: When using ARC3Tester or main.py, tags are automatically added.")
+    print("For manual control, use game_client.open_scorecard(game_ids, tags=custom_tags)")
+
+
 if __name__ == "__main__":
     print("ARC-AGI-3 Benchmarking Framework - Examples")
     print("=" * 60)
@@ -125,6 +156,7 @@ if __name__ == "__main__":
     try:
         example_model_configs()
         example_list_games()
+        example_custom_tags()
         
         # Uncomment to actually run a game (will cost tokens)
         #example_single_game()
