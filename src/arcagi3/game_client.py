@@ -21,17 +21,19 @@ class GameClient:
     
     ROOT_URL = "https://three.arcprize.org"
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, max_retries: int = 3):
         """
         Initialize the game client.
         
         Args:
             api_key: ARC API key. If not provided, reads from ARC_API_KEY env var.
+            max_retries: Maximum number of retry attempts for API calls.
         """
         self.api_key = api_key or os.getenv("ARC_API_KEY")
         if not self.api_key:
             raise ValueError("ARC_API_KEY not found in environment or parameters")
         
+        self.max_retries = max_retries
         self.headers = {
             "X-API-Key": self.api_key,
             "Accept": "application/json",
@@ -40,7 +42,6 @@ class GameClient:
         self._session = Session()
         self._session.headers.update(self.headers)
     
-    @retry_with_exponential_backoff(max_retries=3)
     def list_games(self) -> List[Dict[str, str]]:
         """
         Get list of available games.
@@ -54,16 +55,16 @@ class GameClient:
                 {"game_id": "ft09-16726c5b26ff", "title": "FT09"}
             ]
         """
-        url = f"{self.ROOT_URL}/api/games"
-        response = self._session.get(url)
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to list games: {response.text}")
-            response.raise_for_status()
-        
-        return response.json()
+        @retry_with_exponential_backoff(max_retries=self.max_retries)
+        def _call():
+            url = f"{self.ROOT_URL}/api/games"
+            response = self._session.get(url)
+            if response.status_code != 200:
+                logger.error(f"Failed to list games: {response.text}")
+                response.raise_for_status()
+            return response.json()
+        return _call()
     
-    @retry_with_exponential_backoff(max_retries=3)
     def open_scorecard(self, game_ids: List[str], card_id: Optional[str] = None, tags: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Open a new scorecard for tracking game progress.
@@ -76,25 +77,23 @@ class GameClient:
         Returns:
             Scorecard response from API including the card_id
         """
-        url = f"{self.ROOT_URL}/api/scorecard/open"
-        data = {}
-        
-        if card_id:
-            data["card_id"] = card_id
-        if game_ids:
-            data["game_ids"] = game_ids
-        if tags:
-            data["tags"] = tags
-        
-        response = self._session.post(url, json=data)
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to open scorecard: {response.text}")
-            response.raise_for_status()
-        
-        return response.json()
+        @retry_with_exponential_backoff(max_retries=self.max_retries)
+        def _call():
+            url = f"{self.ROOT_URL}/api/scorecard/open"
+            data = {}
+            if card_id:
+                data["card_id"] = card_id
+            if game_ids:
+                data["game_ids"] = game_ids
+            if tags:
+                data["tags"] = tags
+            response = self._session.post(url, json=data)
+            if response.status_code != 200:
+                logger.error(f"Failed to open scorecard: {response.text}")
+                response.raise_for_status()
+            return response.json()
+        return _call()
     
-    @retry_with_exponential_backoff(max_retries=3)
     def close_scorecard(self, card_id: str) -> Dict[str, Any]:
         """
         Close a scorecard.
@@ -105,18 +104,17 @@ class GameClient:
         Returns:
             Response from API
         """
-        url = f"{self.ROOT_URL}/api/scorecard/close"
-        data = {"card_id": card_id}
-        
-        response = self._session.post(url, json=data)
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to close scorecard: {response.text}")
-            response.raise_for_status()
-        
-        return response.json()
+        @retry_with_exponential_backoff(max_retries=self.max_retries)
+        def _call():
+            url = f"{self.ROOT_URL}/api/scorecard/close"
+            data = {"card_id": card_id}
+            response = self._session.post(url, json=data)
+            if response.status_code != 200:
+                logger.error(f"Failed to close scorecard: {response.text}")
+                response.raise_for_status()
+            return response.json()
+        return _call()
     
-    @retry_with_exponential_backoff(max_retries=3)
     def get_scorecard(self, card_id: str, game_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Retrieve scorecard information.
@@ -128,20 +126,19 @@ class GameClient:
         Returns:
             Scorecard data from API
         """
-        if game_id:
-            url = f"{self.ROOT_URL}/api/scorecard/{card_id}/{game_id}"
-        else:
-            url = f"{self.ROOT_URL}/api/scorecard/{card_id}"
-        
-        response = self._session.get(url, timeout=5)
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to get scorecard: {response.text}")
-            response.raise_for_status()
-        
-        return response.json()
+        @retry_with_exponential_backoff(max_retries=self.max_retries)
+        def _call():
+            if game_id:
+                url = f"{self.ROOT_URL}/api/scorecard/{card_id}/{game_id}"
+            else:
+                url = f"{self.ROOT_URL}/api/scorecard/{card_id}"
+            response = self._session.get(url, timeout=5)
+            if response.status_code != 200:
+                logger.error(f"Failed to get scorecard: {response.text}")
+                response.raise_for_status()
+            return response.json()
+        return _call()
     
-    @retry_with_exponential_backoff(max_retries=3)
     def execute_action(
         self,
         action: str,
@@ -157,22 +154,19 @@ class GameClient:
         Returns:
             Game state response from API
         """
-        url = f"{self.ROOT_URL}/api/cmd/{action}"
-        
-        action_data = data or {}
-        
-        response = self._session.post(url, json=action_data)
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to execute action {action}: {response.text}")
-            response.raise_for_status()
-        
-        response_data = response.json()
-        
-        if "error" in response_data:
-            logger.warning(f"API returned error for action {action}: {response_data['error']}")
-        
-        return response_data
+        @retry_with_exponential_backoff(max_retries=self.max_retries)
+        def _call():
+            url = f"{self.ROOT_URL}/api/cmd/{action}"
+            action_data = data or {}
+            response = self._session.post(url, json=action_data)
+            if response.status_code != 200:
+                logger.error(f"Failed to execute action {action}: {response.text}")
+                response.raise_for_status()
+            response_data = response.json()
+            if "error" in response_data:
+                logger.warning(f"API returned error for action {action}: {response_data['error']}")
+            return response_data
+        return _call()
     
     def reset_game(self, card_id: str, game_id: str, guid: Optional[str] = None) -> Dict[str, Any]:
         """
