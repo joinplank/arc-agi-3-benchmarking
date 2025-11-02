@@ -34,6 +34,7 @@ class ARC3Tester:
         overwrite_results: bool = False,
         max_actions: int = 40,
         retry_attempts: int = 3,
+        api_retries: int = 3,
     ):
         """
         Initialize the tester.
@@ -44,6 +45,7 @@ class ARC3Tester:
             overwrite_results: Whether to overwrite existing results
             max_actions: Maximum actions per game
             retry_attempts: Number of retry attempts for API failures
+            api_retries: Number of retry attempts for ARC-AGI-3 API calls
         """
         self.config = config
         self.model_config = read_models_config(config)
@@ -53,7 +55,7 @@ class ARC3Tester:
         self.retry_attempts = retry_attempts
         
         # Initialize game client
-        self.game_client = GameClient()
+        self.game_client = GameClient(max_retries=api_retries)
         
         logger.info(f"Initialized ARC3Tester with config: {config}")
         logger.info(f"Model: {self.model_config.model_name}, Provider: {self.model_config.provider}")
@@ -147,6 +149,12 @@ def main_cli(cli_args: Optional[list] = None):
         help="Number of retry attempts for API failures (default: 3)"
     )
     parser.add_argument(
+        "--retries",
+        type=int,
+        default=3,
+        help="Number of retry attempts for ARC-AGI-3 API calls (default: 3)"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -200,6 +208,7 @@ def main_cli(cli_args: Optional[list] = None):
         overwrite_results=args.overwrite_results,
         max_actions=args.max_actions,
         retry_attempts=args.retry_attempts,
+        api_retries=args.retries,
     )
     
     # Play game
