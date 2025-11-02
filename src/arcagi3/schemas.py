@@ -187,7 +187,7 @@ class ModelConfig(BaseModel):
     provider: str
     pricing: ModelPricing
     api_type: Optional[str] = APIType.CHAT_COMPLETIONS
-    multimodal: bool = True
+    multimodal: bool = False
     kwargs: Dict[str, Any] = {}
     
     model_config = {
