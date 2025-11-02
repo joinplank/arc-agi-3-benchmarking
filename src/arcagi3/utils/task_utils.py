@@ -5,6 +5,69 @@ import json
 import yaml
 from datetime import datetime
 
+
+def generate_scorecard_tags(model_config: ModelConfig) -> List[str]:
+    """
+    Generate scorecard tags from a ModelConfig object.
+    
+    Tags are formatted as "key:value" strings for better categorization
+    and filtering on the ARC Prize platform.
+    
+    Args:
+        model_config: ModelConfig object containing model configuration
+        
+    Returns:
+        List of tag strings in "key:value" format
+        
+    Example:
+        >>> config = read_models_config("gpt-4o-mini-2024-07-18")
+        >>> tags = generate_scorecard_tags(config)
+        >>> print(tags)
+        ["model:gpt-4o-mini-2024-07-18", "provider:openai", "api_type:responses", ...]
+    """
+    
+    def flatten_dict(d: Dict[str, Any], parent_key: str = '') -> List[tuple]:
+        """Recursively flatten nested dictionaries into key-value pairs."""
+        items = []
+        for k, v in d.items():
+            # Skip pricing info (internal) and name (redundant)
+            if k in ['pricing', 'name']:
+                continue
+                
+            new_key = f"{parent_key}_{k}" if parent_key else k
+            
+            if isinstance(v, dict):
+                # Recursively flatten nested dicts
+                items.extend(flatten_dict(v, new_key))
+            elif v is None:
+                # Skip None values
+                continue
+            else:
+                # Handle leaf values
+                if isinstance(v, bool):
+                    tag_value = str(v).lower()
+                else:
+                    tag_value = str(v)
+                items.append((new_key, tag_value))
+        return items
+    
+    tags = []
+    
+    # Add core fields
+    tags.append(f"model:{model_config.model_name}")
+    tags.append(f"provider:{model_config.provider}")
+    
+    if model_config.api_type:
+        tags.append(f"api_type:{model_config.api_type}")
+    
+    # Process kwargs to extract all config parameters
+    if model_config.kwargs:
+        flattened = flatten_dict(model_config.kwargs)
+        for key, value in flattened:
+            tags.append(f"{key}:{value}")
+    
+    return tags
+
 def read_models_config(config: str) -> ModelConfig:
     base_dir = os.path.dirname(os.path.dirname(__file__))
     models_file = os.path.join(base_dir, "models.yml")

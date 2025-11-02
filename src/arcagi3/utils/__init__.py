@@ -8,6 +8,7 @@ from .task_utils import (
     read_provider_rate_limits,
     generate_execution_map,
     generate_summary,
+    generate_scorecard_tags,
 )
 from .retry import retry_with_exponential_backoff, retry_on_rate_limit, RetryConfig
 from .rate_limiter import AsyncRequestRateLimiter
@@ -20,6 +21,7 @@ __all__ = [
     "read_provider_rate_limits",
     "generate_execution_map",
     "generate_summary",
+    "generate_scorecard_tags",
     "retry_with_exponential_backoff",
     "retry_on_rate_limit",
     "RetryConfig",
