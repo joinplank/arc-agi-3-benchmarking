@@ -416,13 +416,11 @@ class MultimodalAgent:
                         else:
                             url = image_url
 
-                        if url.startswith("data:image/"):
-                            converted.append({
-                                "type": "input_image",
-                                "image_url": url
-                            })
-                        else:
-                            converted.append(block)
+                        # Convert to Responses API format regardless of URL type
+                        converted.append({
+                            "type": "input_image",
+                            "image_url": url
+                        })
                     elif block_type == "text":
                         converted.append({
                             "type": "input_text",
