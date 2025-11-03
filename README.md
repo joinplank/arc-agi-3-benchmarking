@@ -201,7 +201,7 @@ Install only what you need:
 ```bash
 pip install openai            # OpenAI models
 pip install anthropic         # Claude models
-pip install google-generativeai  # Gemini models
+pip install google-genai      # Gemini models
 ```
 
 Providers load lazily - only need SDKs you actually use.

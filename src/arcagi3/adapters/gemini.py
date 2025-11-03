@@ -2,13 +2,10 @@ from .provider import ProviderAdapter
 import os
 from dotenv import load_dotenv
 import json
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:
-    # Fallback for older google-generativeai versions
-    import google.generativeai as genai
-    types = genai.types
+
+from google import genai
+from google.genai import types
+
 from typing import List, Optional
 from datetime import datetime, timezone
 from arcagi3.schemas import ARCTaskOutput, AttemptMetadata, Choice, Message, Usage, Cost, CompletionTokensDetails, Attempt
