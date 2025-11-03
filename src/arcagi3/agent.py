@@ -295,6 +295,11 @@ class MultimodalAgent:
             # Anthropic format
             elif hasattr(response.usage, 'input_tokens'):
                 return response.usage.input_tokens, response.usage.output_tokens
+        # Gemini format
+        elif hasattr(response, 'usage_metadata') and response.usage_metadata:
+            prompt_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+            completion_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+            return prompt_tokens, completion_tokens
         return 0, 0
     
     def _extract_content(self, response: Any) -> str:
@@ -331,6 +336,13 @@ class MultimodalAgent:
                 elif isinstance(block, dict) and block.get('type') == 'text':
                     text_parts.append(block.get('text', ''))
             return ''.join(text_parts)
+        # Gemini format
+        elif hasattr(response, 'text'):
+            text = response.text
+            if text is None:
+                logger.warning("Gemini returned None content")
+                return ""
+            return text
         
         logger.warning(f"Unknown response format. Type: {type(response)}")
         return ""
@@ -438,6 +450,9 @@ class MultimodalAgent:
                 messages=filtered_messages,
                 **anthropic_kwargs
             )
+        elif provider_name == "gemini":
+            # GeminiAdapter handles message conversion internally
+            return self.provider.chat_completion(messages)
         else:
             # For other providers, try OpenAI-compatible format
             try:

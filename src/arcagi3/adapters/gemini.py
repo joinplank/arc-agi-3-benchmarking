@@ -1,5 +1,6 @@
 from .provider import ProviderAdapter
 import os
+import base64
 from dotenv import load_dotenv
 import json
 
@@ -124,8 +125,89 @@ class GeminiAdapter(ProviderAdapter):
         attempt = Attempt(metadata=metadata, answer=response_text)
         return attempt
 
+    def _convert_content_to_gemini_parts(self, content):
+        """
+        Convert OpenAI-style content blocks to Gemini Part objects.
+        
+        Handles:
+        - String content -> Part(text=content)
+        - List of blocks -> List of Part objects
+        - image_url blocks -> Part(inline_data=Blob(...))
+        
+        Args:
+            content: Can be a string or a list of content blocks
+            
+        Returns:
+            List of types.Part objects
+        """
+        from google.genai.types import Blob
+        parts = []
+        
+        if isinstance(content, str):
+            # Simple string content
+            parts.append(types.Part(text=content))
+        elif isinstance(content, list):
+            # Multimodal content (text + images)
+            image_count = 0
+            text_count = 0
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "text":
+                        parts.append(types.Part(text=block.get("text", "")))
+                        text_count += 1
+                    elif block.get("type") == "image_url":
+                        # Convert OpenAI-style image_url to Gemini format
+                        image_url = block.get("image_url", {})
+                        if isinstance(image_url, dict):
+                            base64_data = image_url.get("url") or image_url.get("data", "")
+                            media_type = image_url.get("media_type", "image/png")
+                        else:
+                            base64_data = str(image_url)
+                            media_type = "image/png"
+                        
+                        # Remove data URL prefix if present
+                        if base64_data.startswith("data:"):
+                            base64_data = base64_data.split(",", 1)[1]
+                        
+                        # Convert base64 string to bytes
+                        try:
+                            image_bytes = base64.b64decode(base64_data)
+                            parts.append(types.Part(
+                                inline_data=Blob(
+                                    data=image_bytes,
+                                    mime_type=media_type
+                                )
+                            ))
+                            image_count += 1
+                            logger.debug(f"Converted image block to Gemini Part ({len(image_bytes)} bytes, {media_type})")
+                        except Exception as e:
+                            logger.error(f"Failed to decode base64 image: {e}")
+                    elif "inline_data" in block:
+                        # Handle pre-converted inline_data format
+                        inline_data = block["inline_data"]
+                        if isinstance(inline_data, dict):
+                            parts.append(types.Part(
+                                inline_data=Blob(
+                                    data=inline_data.get("data"),
+                                    mime_type=inline_data.get("mime_type", "image/png")
+                                )
+                            ))
+                            image_count += 1
+                elif isinstance(block, str):
+                    parts.append(types.Part(text=block))
+                    text_count += 1
+            
+            if image_count > 0:
+                logger.info(f"Converted {image_count} image(s) and {text_count} text block(s) to Gemini Parts")
+        else:
+            logger.warning(f"Unexpected content type: {type(content)}")
+        
+        return parts
+
     def chat_completion(self, messages: list):
         contents_list = []
+        system_messages = []
+        
         for msg in messages:
             role = msg.get("role")
             content = msg.get("content", "")
@@ -133,23 +215,40 @@ class GeminiAdapter(ProviderAdapter):
                 role = "model"  # Gemini uses 'model' for assistant responses
             
             if role in ["user", "model"]:
-                contents_list.append(types.Content(role=role, parts=[types.Part(text=content)]))
+                # Check if content contains images
+                has_images = False
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "image_url":
+                            has_images = True
+                            break
+                
+                parts = self._convert_content_to_gemini_parts(content)
+                if parts:
+                    contents_list.append(types.Content(role=role, parts=parts))
+                    if has_images:
+                        logger.debug(f"Added {len(parts)} Parts to {role} message")
             elif role == "system" and content:
-                # System messages from the input 'messages' list are not directly added to Gemini's 'contents'.
-                # They should be provided via the 'system_instruction' key within self.model_config.kwargs,
-                # which populates self.generation_config_dict for types.GenerateContentConfig.
-                # If 'system_instruction' is not in model_config.kwargs, this message will be effectively ignored
-                # by the Gemini API unless explicitly handled elsewhere or if this adapter's behavior changes.
-                if 'system_instruction' not in self.generation_config_dict:
-                     logger.info(
-                         f"System message found in chat history: '{content}'. "
-                         "This will not be used unless 'system_instruction' is set in model_config.kwargs "
-                         "or this adapter is modified to handle it directly in 'contents'."
-                     )
-                # `pass` ensures these are not added to `contents_list` at this stage.
-                pass
+                # Extract system messages to be used as system_instruction
+                if isinstance(content, str):
+                    system_messages.append(content)
+                elif isinstance(content, list):
+                    # Handle multimodal system content
+                    text_parts = []
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+                        elif isinstance(block, str):
+                            text_parts.append(block)
+                    if text_parts:
+                        system_messages.append("\n".join(text_parts))
 
         config_params = self.generation_config_dict.copy()
+        
+        # Combine system messages and add to config if not already present
+        if system_messages and 'system_instruction' not in config_params:
+            system_content = "\n".join(system_messages)
+            config_params['system_instruction'] = system_content
 
         try:
             response = self.client.models.generate_content(
