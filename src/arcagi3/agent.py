@@ -26,6 +26,7 @@ from .schemas import (
     CompletionTokensDetails,
 )
 from .utils.retry import retry_with_exponential_backoff
+from .checkpoint import CheckpointManager
 
 
 logger = logging.getLogger(__name__)
@@ -224,6 +225,7 @@ class MultimodalAgent:
         max_actions: int = 40,
         retry_attempts: int = 3,
         num_plays: int = 1,
+        checkpoint_frequency: int = 1,
     ):
         """
         Initialize the multimodal agent.
@@ -235,6 +237,7 @@ class MultimodalAgent:
             max_actions: Maximum actions to take before stopping
             retry_attempts: Number of retry attempts for failed API calls
             num_plays: Number of times to play the game (continues session with memory)
+            checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable)
         """
         self.config = config
         self.game_client = game_client
@@ -242,6 +245,7 @@ class MultimodalAgent:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
+        self.checkpoint_frequency = checkpoint_frequency
         
         # Initialize provider adapter
         self.provider = create_provider(config)
@@ -263,6 +267,15 @@ class MultimodalAgent:
         self._previous_images: List[Image.Image] = []
         self._previous_score = 0
         
+        # Checkpoint manager
+        self.checkpoint_manager = CheckpointManager(card_id)
+        
+        # Current play tracking (for checkpoint restoration)
+        self._current_play = 1
+        self._play_action_counter = 0
+        self._current_game_id: Optional[str] = None
+        self._current_guid: Optional[str] = None
+        
     def _initialize_memory(self, available_actions: List[str]):
         """Initialize the agent's memory with game info"""
         human_inputs = get_human_inputs_text(available_actions)
@@ -279,6 +292,73 @@ class MultimodalAgent:
             ## Action Log
             No actions taken so far.
         """).strip()
+    
+    def save_checkpoint(self):
+        """Save current agent state to checkpoint"""
+        try:
+            self.checkpoint_manager.save_state(
+                config=self.config,
+                game_id=self._current_game_id,
+                guid=self._current_guid,
+                max_actions=self.max_actions,
+                retry_attempts=self.retry_attempts,
+                num_plays=self.num_plays,
+                action_counter=self.action_counter,
+                total_cost=self.total_cost,
+                total_usage=self.total_usage,
+                action_history=self.action_history,
+                memory_prompt=self._memory_prompt,
+                previous_action=self._previous_action,
+                previous_images=self._previous_images,
+                previous_score=self._previous_score,
+                current_play=self._current_play,
+                play_action_counter=self._play_action_counter,
+            )
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint: {e}", exc_info=True)
+    
+    def restore_from_checkpoint(self):
+        """Restore agent state from checkpoint"""
+        logger.info(f"Restoring agent state from checkpoint: {self.card_id}")
+        
+        try:
+            state = self.checkpoint_manager.load_state()
+            
+            # Restore metadata
+            metadata = state["metadata"]
+            self._current_game_id = metadata["game_id"]
+            self._current_guid = metadata.get("guid")
+            self.max_actions = metadata["max_actions"]
+            self.retry_attempts = metadata["retry_attempts"]
+            self.num_plays = metadata["num_plays"]
+            self.action_counter = metadata["action_counter"]
+            self._current_play = metadata.get("current_play", 1)
+            self._play_action_counter = metadata.get("play_action_counter", 0)
+            self._previous_score = metadata.get("previous_score", 0)
+            
+            # Restore costs and usage
+            self.total_cost = state["total_cost"]
+            self.total_usage = state["total_usage"]
+            
+            # Restore action history
+            self.action_history = state["action_history"]
+            
+            # Restore memory and state
+            self._memory_prompt = state["memory_prompt"]
+            self._previous_action = state["previous_action"]
+            self._previous_images = state["previous_images"]
+            
+            logger.info(
+                f"Restored checkpoint: game_id={self._current_game_id}, "
+                f"action_counter={self.action_counter}, "
+                f"play={self._current_play}/{self.num_plays}, "
+                f"guid={self._current_guid}"
+            )
+            
+            return True
+        except Exception as e:
+            logger.error(f"Failed to restore checkpoint: {e}", exc_info=True)
+            return False
     
     def _extract_usage(self, response: Any) -> tuple[int, int]:
         """Extract token usage from provider response"""
@@ -624,44 +704,112 @@ class MultimodalAgent:
         
         return self.game_client.execute_action(action_name, data)
     
-    def play_game(self, game_id: str) -> GameResult:
+    def play_game(self, game_id: str, resume_from_checkpoint: bool = False) -> GameResult:
         """
         Play a complete game and return results.
         
         Args:
             game_id: Game identifier to play
+            resume_from_checkpoint: If True, resume from existing checkpoint
             
         Returns:
             GameResult with complete game information (best result if multiple plays)
         """
+        # Restore from checkpoint if requested
+        if resume_from_checkpoint:
+            if not self.checkpoint_manager.checkpoint_exists():
+                logger.warning(f"No checkpoint found for {self.card_id}, starting fresh")
+                resume_from_checkpoint = False
+            else:
+                if not self.restore_from_checkpoint():
+                    logger.error("Failed to restore checkpoint, starting fresh")
+                    resume_from_checkpoint = False
+                else:
+                    # Use the restored game_id if available
+                    if self._current_game_id:
+                        game_id = self._current_game_id
+                        logger.info(f"Resuming game {game_id} from checkpoint")
+        
+        # Store current game ID
+        self._current_game_id = game_id
+        
         logger.info(f"Starting game {game_id} with config {self.config} ({self.num_plays} play(s))")
         overall_start_time = time.time()
         
         best_result: Optional[GameResult] = None
-        guid: Optional[str] = None
+        guid: Optional[str] = self._current_guid if resume_from_checkpoint else None
         
-        for play_num in range(1, self.num_plays + 1):
+        # Determine starting play number
+        start_play = self._current_play if resume_from_checkpoint else 1
+        
+        for play_num in range(start_play, self.num_plays + 1):
+            self._current_play = play_num
             play_start_time = time.time()
             
             if play_num > 1:
                 logger.info(f"Starting play {play_num}/{self.num_plays} (continuing session with memory)")
             
             # Reset game (use guid to continue session if not first play)
-            state = self.game_client.reset_game(self.card_id, game_id, guid=guid)
-            guid = state.get("guid")
-            current_score = state.get("score", 0)
-            current_state = state.get("state", "IN_PROGRESS")
-            
-            # Initialize memory only on first play, otherwise keep existing memory
-            if play_num == 1:
-                available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
-                self._initialize_memory(available_actions)
+            # Skip reset if resuming from checkpoint in the middle of a play
+            if resume_from_checkpoint and play_num == start_play and self._play_action_counter > 0:
+                logger.info(f"Resuming play {play_num} at action {self._play_action_counter}")
+                # Try to continue from existing session with guid
+                # If that fails (e.g., scorecard expired), reset with memory intact
+                session_restored = False
+                
+                # Try to use the saved GUID directly - let the server validate it
+                if self._current_guid:
+                    try:
+                        guid = self._current_guid
+                        logger.info(f"Attempting to continue session with guid: {guid}")
+                        state = self.game_client.reset_game(self.card_id, game_id, guid=guid)
+                        
+                        # Verify the guid matches (server should return same guid if session is valid)
+                        returned_guid = state.get("guid")
+                        if returned_guid == guid:
+                            current_score = state.get("score", self._previous_score)
+                            current_state = state.get("state", "IN_PROGRESS")
+                            session_restored = True
+                            logger.info(f"Successfully restored game session (guid: {guid}, score: {current_score})")
+                        else:
+                            logger.warning(f"GUID mismatch: expected {guid}, got {returned_guid}. Session may have expired.")
+                    except Exception as e:
+                        logger.warning(f"Could not restore game session with guid {self._current_guid}: {e}")
+                
+                if not session_restored:
+                    # Reset game with guid=None to start fresh, but keep memory
+                    logger.info("Starting new game session with restored memory...")
+                    state = self.game_client.reset_game(self.card_id, game_id, guid=None)
+                    guid = state.get("guid")
+                    current_score = state.get("score", 0)
+                    current_state = state.get("state", "IN_PROGRESS")
+                    # Keep memory but start fresh on server
+                    logger.info(f"New session started (guid: {guid}, keeping {self.action_counter} actions in memory)")
+                
+                play_action_counter = self._play_action_counter if session_restored else 0
+                # Play action history is already in self.action_history from checkpoint
+                play_action_history: List[GameActionRecord] = []
+                resume_from_checkpoint = False  # Only skip reset once
             else:
-                logger.info(f"Continuing with memory from previous play(s)")
+                state = self.game_client.reset_game(self.card_id, game_id, guid=guid)
+                guid = state.get("guid")
+                current_score = state.get("score", 0)
+                current_state = state.get("state", "IN_PROGRESS")
+                
+                # Initialize memory only on first play, otherwise keep existing memory
+                if play_num == 1 and not self._memory_prompt:
+                    available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
+                    self._initialize_memory(available_actions)
+                else:
+                    logger.info(f"Continuing with memory from previous play(s)")
+                
+                # Reset play-specific counters (but keep cumulative cost/usage)
+                play_action_counter = 0
+                play_action_history: List[GameActionRecord] = []
             
-            # Reset play-specific counters (but keep cumulative cost/usage)
-            play_action_counter = 0
-            play_action_history: List[GameActionRecord] = []
+            # Store guid
+            self._current_guid = guid
+            self._play_action_counter = play_action_counter
             
             # Main game loop
             while (
@@ -729,11 +877,17 @@ class MultimodalAgent:
                     current_score = new_score
                     play_action_counter += 1
                     self.action_counter += 1
+                    self._play_action_counter = play_action_counter
                     
                     logger.info(
                         f"Play {play_num}, Action {play_action_counter}: {action_name}, "
                         f"Score: {current_score}, State: {current_state}"
                     )
+                    
+                    # Save checkpoint periodically
+                    if self.checkpoint_frequency > 0 and play_action_counter % self.checkpoint_frequency == 0:
+                        logger.info(f"Saving checkpoint at action {play_action_counter}")
+                        self.save_checkpoint()
                     
                 except Exception as e:
                     logger.error(f"Error during game loop: {e}", exc_info=True)
@@ -773,6 +927,9 @@ class MultimodalAgent:
             elif current_score > best_result.final_score:
                 best_result = play_result
             
+            # Save checkpoint after play completes
+            self.save_checkpoint()
+            
             # Stop if we won or no more plays
             if current_state == "WIN":
                 logger.info(f"Game won on play {play_num}! Stopping early.")
@@ -792,6 +949,11 @@ class MultimodalAgent:
             f"Score: {best_result.final_score}, Total Actions: {self.action_counter}, "
             f"Cost: ${self.total_cost.total_cost:.4f}"
         )
+        
+        # Clean up checkpoint on successful completion
+        if best_result.final_state == "WIN":
+            logger.info("Game won, deleting checkpoint")
+            self.checkpoint_manager.delete_checkpoint()
         
         return best_result
 

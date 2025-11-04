@@ -26,6 +26,7 @@ python main.py \
 - 💰 **Cost Tracking** - Automatic token usage and cost calculation
 - 🔄 **Retry Logic** - Exponential backoff for API resilience
 - 📊 **Results Export** - Comprehensive JSON output with full game history
+- 💾 **Checkpoint System** - Save/resume game state for crash recovery
 
 ## Installation
 
@@ -70,6 +71,73 @@ python -m arcagi3.cli \
   --config "gpt-4o-2024-11-20"
 ```
 
+### Checkpoint & Resume
+
+The checkpoint system automatically saves game progress for crash recovery and resumption.
+
+#### How It Works
+
+Checkpoints are saved automatically:
+- After every action (configurable via `--checkpoint-frequency`)
+- At the end of each play (for multi-play runs)
+- Stored in `.checkpoint/{scorecard-id}/` directory
+
+Each checkpoint contains:
+- Complete conversation history and agent memory
+- All action records with reasoning
+- Cost and token usage statistics
+- Session identifiers (game_id, guid, card_id)
+- Previous frame images
+
+#### Quick Start
+
+```bash
+# 1. Start a game (checkpoint created automatically)
+python main.py --game_id "ls20-fa137e247ce6" --config "gpt-4o-2024-11-20"
+# Note the scorecard ID from logs: "Opened scorecard: abc-123-def-456"
+
+# 2. If interrupted (crash, Ctrl-C, etc.), list checkpoints
+python main.py --list-checkpoints
+
+# 3. Resume from checkpoint using the scorecard ID
+python main.py --checkpoint abc-123-def-456
+```
+
+The game continues from where it left off with:
+- ✅ Same conversation history and memory
+- ✅ Accumulated costs and actions
+- ✅ Same session on the server (when possible)
+
+#### Advanced Options
+
+```bash
+# Customize checkpoint frequency (save every 5 actions instead of 1)
+python main.py --game_id "ls20-fa137e247ce6" --config "gpt-4o-2024-11-20" --checkpoint-frequency 5
+
+# Disable periodic checkpoints (only save at end of play)
+python main.py --game_id "ls20-fa137e247ce6" --config "gpt-4o-2024-11-20" --checkpoint-frequency 0
+
+# Close scorecard manually (prevents resume)
+python main.py --close-scorecard abc-123-def-456
+
+# Close scorecard on exit (even if not won)
+python main.py --game_id "ls20-fa137e247ce6" --config "gpt-4o-2024-11-20" --close-on-exit
+```
+
+#### Important Notes
+
+**Session Continuity**: When resuming, the system attempts to restore the exact game session using the saved GUID. If the session has expired (server timeout), the system:
+- Opens a new game session
+- Preserves the agent's memory and learned patterns
+- Continues from the new session with existing knowledge
+
+**Scorecard Management**: By default, scorecards are kept open after crashes/interrupts to enable resume. They're only closed when:
+- ✅ Game is won (WIN state)
+- ✅ `--close-on-exit` flag is used
+- ❌ NOT on Ctrl-C or crash (kept open for resume)
+
+**Storage**: Checkpoints include frame images and can be several MB in size. Delete old checkpoints manually with `rm -rf .checkpoint/{card-id}` if needed.
+
 ### Programmatic Usage
 
 ```python
@@ -103,20 +171,31 @@ client.close_scorecard(card_id)
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--game_id` | Game ID to play | Required |
-| `--config` | Model config from models.yml | Required |
+| `--game_id` | Game ID to play | Required* |
+| `--config` | Model config from models.yml | Required* |
+| `--checkpoint` | Resume from checkpoint (card_id) | None |
+| `--list-checkpoints` | List all available checkpoints | - |
+| `--close-scorecard` | Close a scorecard by ID | - |
+| `--checkpoint-frequency` | Save checkpoint every N actions | 1 |
+| `--close-on-exit` | Close scorecard on exit (prevents resume) | False |
 | `--max_actions` | Max actions per game | 40 |
+| `--num_plays` | Number of plays (continues session) | 1 |
 | `--save_results_dir` | Results directory | `results/<config>` |
 | `--retry_attempts` | API retry attempts | 3 |
 | `--verbose` | Enable verbose logging | False |
+
+*Not required when using `--checkpoint` (loaded from checkpoint)
 
 ### Batch CLI (`arcagi3.cli`)
 
 | Option | Description |
 |--------|-------------|
 | `--list-games` | List available games and exit |
+| `--list-checkpoints` | List all available checkpoints |
+| `--close-scorecard` | Close a scorecard by ID |
 | `--games "id1,id2"` | Run specific games |
 | `--all-games` | Run all available games |
+| `--checkpoint` | Resume from checkpoint |
 
 All main CLI options also available.
 
@@ -154,6 +233,7 @@ arc-agi-3-benchmarking/
 ├── src/arcagi3/              # Main package
 │   ├── agent.py             # Multimodal agent
 │   ├── game_client.py       # ARC-AGI-3 API
+│   ├── checkpoint.py        # Checkpoint management
 │   ├── image_utils.py       # Image processing
 │   ├── schemas.py           # Data models
 │   ├── models.yml           # Model configs
@@ -161,6 +241,7 @@ arc-agi-3-benchmarking/
 │   └── utils/               # Helpers
 ├── main.py                   # Single game CLI
 ├── example_usage.py          # Code examples
+├── .checkpoint/              # Checkpoints (auto-created)
 └── results/                  # Output directory
 ```
 
@@ -252,6 +333,12 @@ The `scorecard_url` field provides a direct link to view the game replay online 
 - Use `--verbose` flag for detailed logs
 - Check `results/` directory for JSON output
 - Review action reasoning in result files
+
+**Checkpoint Recovery:**
+- Checkpoints save automatically after every action (customizable with `--checkpoint-frequency`)
+- Resume with `--checkpoint {card-id}` after crash/interrupt
+- List checkpoints with `--list-checkpoints`
+- Close scorecards with `--close-scorecard {card-id}`
 
 **Adding Providers:**
 See `src/arcagi3/adapters/` for examples. Create new adapter inheriting from `ProviderAdapter`, add to factory in `__init__.py`, configure in `models.yml`.

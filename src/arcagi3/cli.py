@@ -29,6 +29,7 @@ if parent_dir not in sys.path:
 
 from main import ARC3Tester
 from arcagi3.game_client import GameClient
+from arcagi3.checkpoint import CheckpointManager
 
 
 load_dotenv()
@@ -52,6 +53,8 @@ def run_batch_games(
     overwrite_results: bool = False,
     max_actions: int = 40,
     retry_attempts: int = 3,
+    checkpoint_card_id: Optional[str] = None,
+    checkpoint_frequency: int = 1,
 ):
     """
     Run multiple games sequentially.
@@ -63,6 +66,8 @@ def run_batch_games(
         overwrite_results: Whether to overwrite existing results
         max_actions: Maximum actions per game
         retry_attempts: Number of retry attempts
+        checkpoint_card_id: If provided, resume from this checkpoint
+        checkpoint_frequency: Save checkpoint every N actions
     """
     logger.info(f"Running {len(game_ids)} games with config {config}")
     
@@ -73,6 +78,7 @@ def run_batch_games(
         overwrite_results=overwrite_results,
         max_actions=max_actions,
         retry_attempts=retry_attempts,
+        checkpoint_frequency=checkpoint_frequency,
     )
     
     # Track results
@@ -80,6 +86,46 @@ def run_batch_games(
     successes = 0
     failures = 0
     
+    # If checkpoint provided, only run that game
+    if checkpoint_card_id:
+        checkpoint_mgr = CheckpointManager(checkpoint_card_id)
+        if not checkpoint_mgr.checkpoint_exists():
+            logger.error(f"Checkpoint not found: {checkpoint_card_id}")
+            return
+        
+        checkpoint_info = CheckpointManager.get_checkpoint_info(checkpoint_card_id)
+        game_id = checkpoint_info.get("game_id")
+        logger.info(f"Resuming from checkpoint: {checkpoint_card_id}, game: {game_id}")
+        
+        try:
+            result = tester.play_game(
+                game_id,
+                card_id=checkpoint_card_id,
+                resume_from_checkpoint=True
+            )
+            if result:
+                results.append(result)
+                successes += 1
+                logger.info(
+                    f"✓ Completed: {result.final_state}, "
+                    f"Score: {result.final_score}, "
+                    f"Cost: ${result.total_cost.total_cost:.4f}"
+                )
+        except Exception as e:
+            failures += 1
+            logger.error(f"✗ Failed: {e}", exc_info=True)
+        
+        # Print summary
+        logger.info(f"\n{'='*60}")
+        logger.info("Checkpoint Resume Summary")
+        logger.info(f"{'='*60}")
+        logger.info(f"Success: {successes > 0}")
+        if results:
+            logger.info(f"Final Cost: ${results[0].total_cost.total_cost:.4f}")
+        logger.info(f"{'='*60}\n")
+        return
+    
+    # Otherwise, run all games normally
     for i, game_id in enumerate(game_ids, 1):
         logger.info(f"\n{'='*60}")
         logger.info(f"Game {i}/{len(game_ids)}: {game_id}")
@@ -131,6 +177,26 @@ def main_cli(cli_args: Optional[list] = None):
         description="Run ARC-AGI-3 benchmarks on multiple games"
     )
     
+    # Checkpoint options
+    checkpoint_group = parser.add_mutually_exclusive_group()
+    checkpoint_group.add_argument(
+        "--checkpoint",
+        type=str,
+        metavar="CARD_ID",
+        help="Resume from existing checkpoint using the specified scorecard ID"
+    )
+    checkpoint_group.add_argument(
+        "--list-checkpoints",
+        action="store_true",
+        help="List all available checkpoints and exit"
+    )
+    checkpoint_group.add_argument(
+        "--close-scorecard",
+        type=str,
+        metavar="CARD_ID",
+        help="Close a scorecard by ID and exit"
+    )
+    
     # Game selection (mutually exclusive)
     game_group = parser.add_mutually_exclusive_group(required=False)
     game_group.add_argument(
@@ -179,6 +245,12 @@ def main_cli(cli_args: Optional[list] = None):
         help="Number of retry attempts for API failures (default: 3)"
     )
     parser.add_argument(
+        "--checkpoint-frequency",
+        type=int,
+        default=1,
+        help="Save checkpoint every N actions (default: 1, 0 to disable periodic checkpoints)"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -192,6 +264,49 @@ def main_cli(cli_args: Optional[list] = None):
     )
     
     args = parser.parse_args(cli_args)
+    
+    # Handle --list-checkpoints
+    if args.list_checkpoints:
+        checkpoints = CheckpointManager.list_checkpoints()
+        if checkpoints:
+            print("\nAvailable Checkpoints:")
+            print("=" * 80)
+            for card_id in checkpoints:
+                info = CheckpointManager.get_checkpoint_info(card_id)
+                if info:
+                    print(f"  Card ID: {card_id}")
+                    print(f"    Game: {info.get('game_id', 'N/A')}")
+                    print(f"    Config: {info.get('config', 'N/A')}")
+                    print(f"    Actions: {info.get('action_counter', 0)}")
+                    print(f"    Play: {info.get('current_play', 1)}/{info.get('num_plays', 1)}")
+                    print(f"    Timestamp: {info.get('checkpoint_timestamp', 'N/A')}")
+                    print()
+            print("=" * 80)
+            print(f"Total: {len(checkpoints)} checkpoint(s)\n")
+        else:
+            print("No checkpoints found.\n")
+        return
+    
+    # Handle --close-scorecard
+    if args.close_scorecard:
+        card_id = args.close_scorecard
+        print(f"\nClosing scorecard: {card_id}")
+        try:
+            game_client = GameClient()
+            response = game_client.close_scorecard(card_id)
+            print(f"✓ Successfully closed scorecard {card_id}")
+            print(f"Response: {response}")
+            
+            # Optionally delete local checkpoint
+            checkpoint_mgr = CheckpointManager(card_id)
+            if checkpoint_mgr.checkpoint_exists():
+                print(f"\nLocal checkpoint still exists at: .checkpoint/{card_id}")
+                print(f"To delete it, run: rm -rf .checkpoint/{card_id}")
+        except Exception as e:
+            print(f"✗ Failed to close scorecard: {e}")
+            import traceback
+            traceback.print_exc()
+        return
     
     # Configure logging
     if args.verbose:
@@ -230,9 +345,39 @@ def main_cli(cli_args: Optional[list] = None):
             print("No games available or failed to fetch games.")
         return
     
+    # Handle checkpoint mode
+    if args.checkpoint:
+        checkpoint_info = CheckpointManager.get_checkpoint_info(args.checkpoint)
+        if not checkpoint_info:
+            print(f"Error: Checkpoint '{args.checkpoint}' not found.")
+            print("Use --list-checkpoints to see available checkpoints.")
+            return
+        
+        # Use checkpoint config if not provided
+        if not args.config:
+            args.config = checkpoint_info.get("config")
+            print(f"Using config from checkpoint: {args.config}")
+        
+        # Set default save directory
+        if not args.save_results_dir:
+            args.save_results_dir = f"results/{args.config}"
+        
+        # Run with checkpoint
+        run_batch_games(
+            game_ids=[],  # Not needed for checkpoint resume
+            config=args.config,
+            save_results_dir=args.save_results_dir,
+            overwrite_results=args.overwrite_results,
+            max_actions=args.max_actions,
+            retry_attempts=args.retry_attempts,
+            checkpoint_card_id=args.checkpoint,
+            checkpoint_frequency=args.checkpoint_frequency,
+        )
+        return
+    
     # Require config for running games
     if not args.config:
-        parser.error("--config is required unless using --list-games")
+        parser.error("--config is required unless using --list-games, --list-checkpoints, or --checkpoint")
     
     # Determine which games to run
     game_ids = []
@@ -250,7 +395,7 @@ def main_cli(cli_args: Optional[list] = None):
         if not game_ids:
             parser.error("No valid game IDs provided in --games")
     else:
-        parser.error("Must specify --games, --all-games, or --list-games")
+        parser.error("Must specify --games, --all-games, --checkpoint, --list-games, or --list-checkpoints")
     
     # Set default save directory
     if not args.save_results_dir:
@@ -264,6 +409,7 @@ def main_cli(cli_args: Optional[list] = None):
         overwrite_results=args.overwrite_results,
         max_actions=args.max_actions,
         retry_attempts=args.retry_attempts,
+        checkpoint_frequency=args.checkpoint_frequency,
     )
 
 
