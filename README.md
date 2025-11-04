@@ -44,7 +44,7 @@ OPENAI_API_KEY=your_openai_key      # or other provider
 ### List Available Games
 
 ```bash
-python -m arcagi3.cli --list-games
+python main.py --list-games
 ```
 
 ### Run Single Game
@@ -57,18 +57,23 @@ python main.py \
   --save_results_dir "results/gpt4o"
 ```
 
-### Run Multiple Games
+### Run Multiple Games (Parallel Benchmarking)
 
 ```bash
-# Specific games
-python -m arcagi3.cli \
-  --games "game1,game2,game3" \
-  --config "claude-sonnet-4-5-20250929"
+# Run multiple games in parallel from a file
+python cli/run_all.py \
+  --game_list_file games.txt \
+  --model_configs "gpt-4o-2024-11-20,claude-sonnet-4-5-20250929"
 
-# All games
-python -m arcagi3.cli \
-  --all-games \
-  --config "gpt-4o-2024-11-20"
+# Run specific games with comma-separated list
+python cli/run_all.py \
+  --game_ids "ls20-fa137e247ce6,ft09-16726c5b26ff" \
+  --model_configs "gpt-4o-mini-2024-07-18"
+
+# Test multiple models against multiple games efficiently
+python cli/run_all.py \
+  --game_list_file games.txt \
+  --model_configs "model1,model2,model3"
 ```
 
 ### Checkpoint & Resume
@@ -169,12 +174,15 @@ client.close_scorecard(card_id)
 
 ### Main CLI (`main.py`)
 
+Single game execution with checkpoint support and utility commands.
+
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--game_id` | Game ID to play | Required* |
 | `--config` | Model config from models.yml | Required* |
 | `--checkpoint` | Resume from checkpoint (card_id) | None |
 | `--list-checkpoints` | List all available checkpoints | - |
+| `--list-games` | List all available games | - |
 | `--close-scorecard` | Close a scorecard by ID | - |
 | `--checkpoint-frequency` | Save checkpoint every N actions | 1 |
 | `--close-on-exit` | Close scorecard on exit (prevents resume) | False |
@@ -186,18 +194,22 @@ client.close_scorecard(card_id)
 
 *Not required when using `--checkpoint` (loaded from checkpoint)
 
-### Batch CLI (`arcagi3.cli`)
+### Batch CLI (`cli/run_all.py`)
 
-| Option | Description |
-|--------|-------------|
-| `--list-games` | List available games and exit |
-| `--list-checkpoints` | List all available checkpoints |
-| `--close-scorecard` | Close a scorecard by ID |
-| `--games "id1,id2"` | Run specific games |
-| `--all-games` | Run all available games |
-| `--checkpoint` | Resume from checkpoint |
+Parallel execution for benchmarking multiple models against multiple games.
 
-All main CLI options also available.
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--game_list_file` | Path to file with game IDs (one per line) | - |
+| `--game_ids` | Comma-separated game IDs | - |
+| `--model_configs` | Comma-separated model configs to test | `gpt-4o-mini-2024-07-18` |
+| `--results-root` | Root directory for timestamped results | `results` |
+| `--max_actions` | Max actions per game | 40 |
+| `--num_plays` | Number of plays per game | 1 |
+| `--retry_attempts` | API retry attempts | 3 |
+| `--verbose` | Enable verbose logging | False |
+
+Features: Rate limiting per provider, parallel execution, comprehensive summary statistics.
 
 ## Architecture
 
@@ -239,6 +251,8 @@ arc-agi-3-benchmarking/
 │   ├── models.yml           # Model configs
 │   ├── adapters/            # Provider adapters
 │   └── utils/               # Helpers
+├── cli/
+│   └── run_all.py           # Parallel batch CLI
 ├── main.py                   # Single game CLI
 ├── example_usage.py          # Code examples
 ├── .checkpoint/              # Checkpoints (auto-created)
@@ -321,14 +335,11 @@ The `scorecard_url` field provides a direct link to view the game replay online 
 The framework includes comprehensive test suites for checkpoint functionality:
 
 ```bash
-# Run checkpoint unit tests
-python test_checkpoint.py
-
-# Run checkpoint integration tests
-python test_checkpoint_integration.py
+# Run checkpoint tests
+uv run python test_checkpoint.py
 ```
 
-See [TESTING.md](./TESTING.md) for detailed test documentation.
+Tests cover: checkpoint creation/loading, action history, multi-play tracking, edge cases, and scorecard expiry handling.
 
 ## Resources
 
