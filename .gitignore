@@ -43,6 +43,9 @@ results/
 metrics_output/
 *.log
 
+# Checkpoints (saved game states)
+.checkpoint/
+
 # Testing
 .pytest_cache/
 .coverage
