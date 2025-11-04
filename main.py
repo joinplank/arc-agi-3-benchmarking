@@ -101,7 +101,9 @@ class ARC3Tester:
         tags = generate_scorecard_tags(self.model_config)
         
         # Check if scorecard still exists on server when resuming
+        checkpoint_card_id = None  # Track original checkpoint card_id
         if resume_from_checkpoint and card_id:
+            checkpoint_card_id = card_id  # Preserve original checkpoint card_id
             try:
                 # Try to get the scorecard to verify it still exists
                 self.game_client.get_scorecard(card_id)
@@ -114,6 +116,7 @@ class ARC3Tester:
                 old_card_id = card_id
                 card_id = scorecard_response.get("card_id", card_id)
                 logger.info(f"Created new scorecard: {card_id} (old: {old_card_id})")
+                logger.info(f"Checkpoint will continue using original card_id: {checkpoint_card_id}")
                 # Note: We keep resume_from_checkpoint=True to restore agent state,
                 # but the game will need to reset since the old session is gone
         else:
@@ -123,6 +126,7 @@ class ARC3Tester:
         
         try:
             # Create agent
+            # Use checkpoint_card_id for checkpoint management if resuming, otherwise use card_id
             agent = MultimodalAgent(
                 config=self.config,
                 game_client=self.game_client,
@@ -131,6 +135,7 @@ class ARC3Tester:
                 retry_attempts=self.retry_attempts,
                 num_plays=self.num_plays,
                 checkpoint_frequency=self.checkpoint_frequency,
+                checkpoint_card_id=checkpoint_card_id,
             )
             
             # Play game (with checkpoint support)
@@ -144,6 +149,9 @@ class ARC3Tester:
             # Only close scorecard on WIN (checkpoint is deleted anyway)
             # or if user explicitly requested close_on_exit
             # Otherwise, keep scorecard open for checkpoint resume
+            # Determine the actual checkpoint card_id for logging
+            actual_checkpoint_id = checkpoint_card_id if checkpoint_card_id else card_id
+            
             if result.final_state == "WIN" or self.close_on_exit:
                 try:
                     self.game_client.close_scorecard(card_id)
@@ -152,18 +160,22 @@ class ARC3Tester:
                     logger.debug(f"Could not close scorecard: {e}")
             else:
                 logger.info(f"Scorecard {card_id} left open for potential checkpoint resume")
-                logger.info(f"Checkpoint saved at: .checkpoint/{card_id}")
+                logger.info(f"Checkpoint saved at: .checkpoint/{actual_checkpoint_id}")
             
             return result
             
         except KeyboardInterrupt:
+            # Determine the actual checkpoint card_id for logging
+            actual_checkpoint_id = checkpoint_card_id if checkpoint_card_id else card_id
             logger.info("Interrupted by user (Ctrl-C)")
-            logger.info(f"Checkpoint saved at: .checkpoint/{card_id}")
-            logger.info(f"Resume with: python main.py --checkpoint {card_id}")
+            logger.info(f"Checkpoint saved at: .checkpoint/{actual_checkpoint_id}")
+            logger.info(f"Resume with: python main.py --checkpoint {actual_checkpoint_id}")
             raise
         except Exception as e:
+            # Determine the actual checkpoint card_id for logging
+            actual_checkpoint_id = checkpoint_card_id if checkpoint_card_id else card_id
             logger.error(f"Error during game execution: {e}")
-            logger.info(f"Checkpoint may be available at: .checkpoint/{card_id}")
+            logger.info(f"Checkpoint may be available at: .checkpoint/{actual_checkpoint_id}")
             raise
 
 

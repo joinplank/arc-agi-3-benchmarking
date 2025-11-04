@@ -197,7 +197,9 @@ class CheckpointManager:
         if images_dir.exists():
             image_files = sorted(images_dir.glob("frame_*.png"))
             for img_path in image_files:
-                previous_images.append(Image.open(img_path))
+                with Image.open(img_path) as img:
+                    # Create a copy to fully decouple from file handle
+                    previous_images.append(img.copy())
         
         logger.info(f"Checkpoint loaded successfully")
         

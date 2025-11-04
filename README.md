@@ -316,11 +316,26 @@ Results saved to `{save_results_dir}/{game_id}_{config}_{timestamp}.json`:
 
 The `scorecard_url` field provides a direct link to view the game replay online on the ARC Prize platform.
 
+## Testing
+
+The framework includes comprehensive test suites for checkpoint functionality:
+
+```bash
+# Run checkpoint unit tests
+python test_checkpoint.py
+
+# Run checkpoint integration tests
+python test_checkpoint_integration.py
+```
+
+See [TESTING.md](./TESTING.md) for detailed test documentation.
+
 ## Resources
 
 - **ARC Prize**: https://arcprize.org
 - **API Documentation**: https://docs.arcprize.org/api-reference/
 - **Code Examples**: See `example_usage.py`
+- **Testing Guide**: See [TESTING.md](./TESTING.md)
 
 ## Tips
 

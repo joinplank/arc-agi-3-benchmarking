@@ -226,6 +226,7 @@ class MultimodalAgent:
         retry_attempts: int = 3,
         num_plays: int = 1,
         checkpoint_frequency: int = 1,
+        checkpoint_card_id: Optional[str] = None,
     ):
         """
         Initialize the multimodal agent.
@@ -233,11 +234,12 @@ class MultimodalAgent:
         Args:
             config: Model configuration name from models.yml
             game_client: GameClient for API communication
-            card_id: Scorecard identifier
+            card_id: Scorecard identifier for API calls
             max_actions: Maximum actions to take before stopping
             retry_attempts: Number of retry attempts for failed API calls
             num_plays: Number of times to play the game (continues session with memory)
             checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable)
+            checkpoint_card_id: Optional card_id for checkpoint directory (defaults to card_id if not provided)
         """
         self.config = config
         self.game_client = game_client
@@ -267,8 +269,10 @@ class MultimodalAgent:
         self._previous_images: List[Image.Image] = []
         self._previous_score = 0
         
-        # Checkpoint manager
-        self.checkpoint_manager = CheckpointManager(card_id)
+        # Checkpoint manager - use checkpoint_card_id if provided, otherwise use card_id
+        # This allows resuming from original checkpoint even when scorecard changes
+        effective_checkpoint_id = checkpoint_card_id if checkpoint_card_id else card_id
+        self.checkpoint_manager = CheckpointManager(effective_checkpoint_id)
         
         # Current play tracking (for checkpoint restoration)
         self._current_play = 1
@@ -787,8 +791,21 @@ class MultimodalAgent:
                     logger.info(f"New session started (guid: {guid}, keeping {self.action_counter} actions in memory)")
                 
                 play_action_counter = self._play_action_counter if session_restored else 0
-                # Play action history is already in self.action_history from checkpoint
-                play_action_history: List[GameActionRecord] = []
+                
+                # Reconstruct play_action_history from self.action_history for this play
+                # Actions for this play have action_num from (action_counter - play_action_counter + 1) to action_counter
+                if session_restored and play_action_counter > 0:
+                    start_action_num = self.action_counter - play_action_counter + 1
+                    end_action_num = self.action_counter
+                    play_action_history: List[GameActionRecord] = [
+                        action for action in self.action_history
+                        if start_action_num <= action.action_num <= end_action_num
+                    ]
+                    logger.info(f"Reconstructed {len(play_action_history)} action(s) for current play from checkpoint")
+                else:
+                    # Session not restored or no actions yet in this play
+                    play_action_history: List[GameActionRecord] = []
+                
                 resume_from_checkpoint = False  # Only skip reset once
             else:
                 state = self.game_client.reset_game(self.card_id, game_id, guid=guid)
@@ -856,7 +873,7 @@ class MultimodalAgent:
                     current_state = state.get("state", "IN_PROGRESS")
                     
                     action_record = GameActionRecord(
-                        action_num=self.action_counter + play_action_counter + 1,
+                        action_num=self.action_counter + 1,
                         action=action_name,
                         action_data=ActionData(**action_data_dict) if action_data_dict else None,
                         reasoning={
