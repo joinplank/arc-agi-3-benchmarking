@@ -204,6 +204,11 @@ def main_cli(cli_args: Optional[list] = None):
         metavar="CARD_ID",
         help="Close a scorecard by ID and exit"
     )
+    checkpoint_group.add_argument(
+        "--list-games",
+        action="store_true",
+        help="List all available games from the API and exit"
+    )
     
     parser.add_argument(
         "--game_id",
@@ -275,6 +280,26 @@ def main_cli(cli_args: Optional[list] = None):
     )
     
     args = parser.parse_args(cli_args)
+    
+    # Handle --list-games
+    if args.list_games:
+        try:
+            game_client = GameClient()
+            games = game_client.list_games()
+            if games:
+                print("\nAvailable Games:")
+                print("=" * 60)
+                for game in games:
+                    print(f"  {game['game_id']:<30} {game['title']}")
+                print("=" * 60)
+                print(f"Total: {len(games)} games\n")
+            else:
+                print("No games available or failed to fetch games.\n")
+        except Exception as e:
+            print(f"Error listing games: {e}")
+            import traceback
+            traceback.print_exc()
+        return
     
     # Handle --list-checkpoints
     if args.list_checkpoints:
