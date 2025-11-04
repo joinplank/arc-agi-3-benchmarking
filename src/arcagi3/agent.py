@@ -448,110 +448,15 @@ class MultimodalAgent:
         self.total_usage.completion_tokens += completion_tokens
         self.total_usage.total_tokens += prompt_tokens + completion_tokens
     
-    def _convert_image_blocks_for_anthropic(self, content: Any) -> Any:
-        """Convert OpenAI-style image_url blocks to Anthropic format"""
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            converted = []
-            for block in content:
-                if isinstance(block, dict):
-                    if block.get("type") == "image_url":
-                        # Convert from OpenAI format to Anthropic format
-                        image_url = block.get("image_url", {})
-                        url = image_url.get("url", "")
-                        
-                        # Extract base64 data from data URL
-                        if url.startswith("data:image/png;base64,"):
-                            base64_data = url[len("data:image/png;base64,"):]
-                            converted.append({
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/png",
-                                    "data": base64_data
-                                }
-                            })
-                        else:
-                            # Keep as is if not base64
-                            converted.append(block)
-                    else:
-                        converted.append(block)
-                else:
-                    converted.append(block)
-            return converted
-        return content
-    
     @retry_with_exponential_backoff(max_retries=3)
     def _call_provider(self, messages: List[Dict[str, Any]]) -> Any:
-        """Call provider with retry logic"""
-        # Use the provider's client directly for multimodal support
-        # Most providers follow OpenAI-style API
-        provider_name = self.provider.model_config.provider
+        """
+        Call provider with retry logic.
         
-        if provider_name == "openai":
-            return self.provider.client.chat.completions.create(
-                model=self.provider.model_config.model_name,
-                messages=messages,
-                **self.provider.model_config.kwargs
-            )
-        elif provider_name == "anthropic":
-            # Anthropic requires system messages as separate parameter, not in messages array
-            # Extract system messages and filter them out
-            system_messages = []
-            filtered_messages = []
-            
-            for msg in messages:
-                if msg.get("role") == "system":
-                    # Anthropic system can be string or list of content blocks
-                    content = msg.get("content", "")
-                    if isinstance(content, str):
-                        system_messages.append(content)
-                    elif isinstance(content, list):
-                        # Extract text from content blocks
-                        text_parts = []
-                        for block in content:
-                            if isinstance(block, dict) and block.get("type") == "text":
-                                text_parts.append(block.get("text", ""))
-                        if text_parts:
-                            system_messages.append("\n".join(text_parts))
-                else:
-                    # Convert image blocks for Anthropic
-                    msg_copy = dict(msg)
-                    msg_copy["content"] = self._convert_image_blocks_for_anthropic(msg.get("content"))
-                    filtered_messages.append(msg_copy)
-            
-            # Combine system messages
-            system_content = "\n".join(system_messages) if system_messages else None
-            
-            # Prepare kwargs
-            anthropic_kwargs = dict(self.provider.model_config.kwargs)
-            if system_content:
-                anthropic_kwargs["system"] = system_content
-            
-            return self.provider.client.messages.create(
-                model=self.provider.model_config.model_name,
-                messages=filtered_messages,
-                **anthropic_kwargs
-            )
-        elif provider_name == "gemini":
-            # GeminiAdapter handles message conversion internally
-            return self.provider.chat_completion(messages)
-        else:
-            # For other providers, try OpenAI-compatible format
-            try:
-                return self.provider.client.chat.completions.create(
-                    model=self.provider.model_config.model_name,
-                    messages=messages,
-                    **self.provider.model_config.kwargs
-                )
-            except AttributeError:
-                # Fallback to direct client call
-                return self.provider.client.create(
-                    model=self.provider.model_config.model_name,
-                    messages=messages,
-                    **self.provider.model_config.kwargs
-                )
+        Uses the provider's multimodal_chat_completion method which handles
+        provider-specific message format conversions internally.
+        """
+        return self.provider.multimodal_chat_completion(messages)
     
     def _analyze_previous_action(
         self,
@@ -880,7 +785,7 @@ class MultimodalAgent:
                             "human_action": human_action,
                             "reasoning": human_action_dict.get("reasoning", ""),
                             "expected": human_action_dict.get("expected_result", ""),
-                            "analysis": analysis[:500] if len(analysis) > 500 else analysis,
+                            "analysis": analysis,
                         },
                         result_score=new_score,
                         result_state=current_state,
@@ -888,13 +793,23 @@ class MultimodalAgent:
                     play_action_history.append(action_record)
                     self.action_history.append(action_record)
                     
-                    self._previous_action = human_action_dict
-                    self._previous_images = frame_images
-                    self._previous_score = current_score
-                    current_score = new_score
+                    # Update counters
                     play_action_counter += 1
                     self.action_counter += 1
                     self._play_action_counter = play_action_counter
+                    
+                    # Store current state AFTER action execution for checkpoint
+                    # Get the new frames from the state after action execution
+                    new_frames = state.get("frame", [])
+                    if new_frames:
+                        new_frame_images = [grid_to_image(frame) for frame in new_frames]
+                        self._previous_images = new_frame_images
+                    else:
+                        self._previous_images = frame_images
+                    
+                    self._previous_action = human_action_dict
+                    self._previous_score = new_score
+                    current_score = new_score
                     
                     logger.info(
                         f"Play {play_num}, Action {play_action_counter}: {action_name}, "

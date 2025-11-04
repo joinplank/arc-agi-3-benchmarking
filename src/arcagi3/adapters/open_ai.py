@@ -7,10 +7,13 @@ from openai import OpenAI
 from datetime import datetime, timezone
 from arcagi3.schemas import APIType, AttemptMetadata, Choice, Message, Usage, Cost, CompletionTokensDetails, Attempt
 from typing import Optional, Any, List, Dict
+import logging
 
 import re
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIAdapter(OpenAIBaseAdapter):

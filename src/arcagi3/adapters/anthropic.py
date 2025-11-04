@@ -132,6 +132,117 @@ class AnthropicAdapter(ProviderAdapter):
 
         return attempt
 
+    def _convert_image_blocks_for_anthropic(self, content: Any) -> Any:
+        """Convert OpenAI-style image_url blocks to Anthropic format"""
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, list):
+            converted = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "image_url":
+                        # Convert from OpenAI format to Anthropic format
+                        image_url = block.get("image_url", {})
+                        url = image_url.get("url", "")
+                        
+                        # Extract base64 data from data URL
+                        if url.startswith("data:image/png;base64,"):
+                            base64_data = url[len("data:image/png;base64,"):]
+                            converted.append({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/png",
+                                    "data": base64_data
+                                }
+                            })
+                        else:
+                            # Keep as is if not base64
+                            converted.append(block)
+                    else:
+                        converted.append(block)
+                else:
+                    converted.append(block)
+            return converted
+        return content
+    
+    def multimodal_chat_completion(self, messages: List[Dict[str, Any]]) -> Any:
+        """
+        Make a multimodal API call to Anthropic.
+        Handles conversion from OpenAI-style messages to Anthropic format.
+        
+        Anthropic requires:
+        - System messages as separate 'system' parameter (not in messages array)
+        - Image blocks in Anthropic format (not OpenAI image_url format)
+        
+        Args:
+            messages: List of message dictionaries in OpenAI format
+            
+        Returns:
+            Anthropic Message response
+        """
+        # Extract system messages and filter them out
+        system_messages = []
+        filtered_messages = []
+        
+        for msg in messages:
+            if msg.get("role") == "system":
+                # Anthropic system can be string or list of content blocks
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    system_messages.append(content)
+                elif isinstance(content, list):
+                    # Extract text from content blocks
+                    text_parts = []
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+                    if text_parts:
+                        system_messages.append("\n".join(text_parts))
+            else:
+                # Convert image blocks for Anthropic
+                msg_copy = dict(msg)
+                msg_copy["content"] = self._convert_image_blocks_for_anthropic(msg.get("content"))
+                filtered_messages.append(msg_copy)
+        
+        # Combine system messages
+        system_content = "\n".join(system_messages) if system_messages else None
+        
+        # Prepare kwargs
+        anthropic_kwargs = dict(self.model_config.kwargs)
+        if system_content:
+            anthropic_kwargs["system"] = system_content
+        
+        logger.debug(f"Anthropic multimodal_chat_completion with {len(filtered_messages)} messages")
+        
+        # Check if streaming is enabled
+        stream_enabled = self.model_config.kwargs.get('stream', False)
+        if stream_enabled:
+            # Use streaming with system parameter properly included
+            stream_kwargs = {k: v for k, v in anthropic_kwargs.items() if k != 'stream'}
+            
+            try:
+                # Create the stream with system parameter
+                with self.client.messages.stream(
+                    model=self.model_config.model_name,
+                    messages=filtered_messages,
+                    **stream_kwargs
+                ) as stream:
+                    # Get the final message with usage data
+                    final_message = stream.get_final_message()
+                
+                logger.debug(f"Streaming complete for message ID: {final_message.id}")
+                return final_message
+            except Exception as e:
+                logger.error(f"Error during Anthropic streaming: {e}")
+                raise
+        else:
+            return self.client.messages.create(
+                model=self.model_config.model_name,
+                messages=filtered_messages,
+                **anthropic_kwargs
+            )
+    
     def chat_completion(self, messages, tools=[]):
         """
         Make a raw API call to Anthropic and return the response

@@ -72,6 +72,31 @@ class OpenAIBaseAdapter(ProviderAdapter, abc.ABC):
                 return self._responses_stream(messages)
             return self._responses(messages)
     
+    def multimodal_chat_completion(self, messages: List[Dict[str, Any]]) -> Any:
+        """
+        Make a multimodal API call to OpenAI-compatible API.
+        OpenAI-compatible providers use the standard format, so we can pass messages directly.
+        
+        Args:
+            messages: List of message dictionaries in OpenAI format
+            
+        Returns:
+            OpenAI ChatCompletion response (or compatible)
+        """
+        logger.debug(f"OpenAI-compatible multimodal_chat_completion with {len(messages)} messages")
+        
+        # Check if streaming is enabled
+        stream_enabled = self.model_config.kwargs.get('stream', False)
+        if stream_enabled:
+            # Use the stream handler which returns a proper ChatCompletion with usage
+            return self._chat_completion_stream(messages)
+        else:
+            return self.client.chat.completions.create(
+                model=self.model_config.model_name,
+                messages=messages,
+                **self.model_config.kwargs
+            )
+    
     def _chat_completion(self, messages: List[Dict[str, str]]) -> Any:
         """
         Make a call to the OpenAI Chat Completions API

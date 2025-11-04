@@ -204,6 +204,24 @@ class GeminiAdapter(ProviderAdapter):
         
         return parts
 
+    def multimodal_chat_completion(self, messages: list) -> Any:
+        """
+        Make a multimodal API call to Gemini.
+        Handles conversion from OpenAI-style messages to Gemini format.
+        
+        Gemini requires:
+        - Different role name: 'model' instead of 'assistant'
+        - System messages as 'system_instruction' config parameter
+        - Images as inline_data Blob objects (not image_url)
+        
+        Args:
+            messages: List of message dictionaries in OpenAI format
+            
+        Returns:
+            Gemini GenerateContentResponse
+        """
+        return self.chat_completion(messages)
+    
     def chat_completion(self, messages: list):
         contents_list = []
         system_messages = []
@@ -250,6 +268,7 @@ class GeminiAdapter(ProviderAdapter):
             system_content = "\n".join(system_messages)
             config_params['system_instruction'] = system_content
 
+        logger.debug(f"Gemini chat_completion with {len(contents_list)} content(s)")
         try:
             response = self.client.models.generate_content(
                 model=self.model_config.model_name,

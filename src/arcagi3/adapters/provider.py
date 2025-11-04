@@ -53,6 +53,25 @@ class ProviderAdapter(abc.ABC):
         # Base implementation can raise or be empty, subclasses should override if needed
         # OpenAI-style adapters use _chat_completion internally.
         raise NotImplementedError("Subclasses must implement chat_completion if used directly.")
+    
+    def multimodal_chat_completion(self, messages: List[Dict[str, Any]]) -> Any:
+        """
+        Make a multimodal API call to the provider with support for images.
+        
+        This method handles provider-specific message format conversions and API calls.
+        Messages should be in OpenAI-style format with support for:
+        - role: "system", "user", "assistant"
+        - content: string or list of {"type": "text"/"image_url", ...} blocks
+        
+        Args:
+            messages: List of message dictionaries with role and content
+            
+        Returns:
+            Provider-specific response object
+        """
+        # Default implementation delegates to chat_completion
+        # Providers can override this to handle their specific multimodal formats
+        return self.chat_completion(messages)
 
     @abc.abstractmethod
     def extract_json_from_response(self, input_response: str) -> List[List[int]]:
