@@ -704,7 +704,18 @@ class MultimodalAgent:
                             "y": max(0, min(y, 127)) // 2,
                         }
                     
-                    reasoning_for_api = human_action_dict.get("reasoning", "")
+                    action_field = action_name
+                    if action_name == "ACTION6" and action_data_dict:
+                        action_field = f"{action_name}: [{action_data_dict}]"
+
+                    reasoning_for_api = {
+                        "analysis": analysis[:1000] if len(analysis) > 1000 else analysis,
+                        "action": action_field,
+                        "human_action": human_action,
+                        "reasoning": (human_action_dict.get("reasoning", "") or "")[:300],
+                        "expected": (human_action_dict.get("expected_result", "") or "")[:300],
+                        "tokens:": [self.total_usage.prompt_tokens, self.total_usage.completion_tokens],
+                    }
                     state = self._execute_game_action(action_name, action_data_dict, game_id, guid, reasoning_for_api)
                     guid = state.get("guid", guid)
                     new_score = state.get("score", current_score)
