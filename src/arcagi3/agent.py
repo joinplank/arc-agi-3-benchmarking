@@ -140,9 +140,9 @@ class MultimodalAgent:
     SYSTEM_PROMPT = dedent("""\
         You are an abstract reasoning agent that is attempting to solve
         turn-based interactive environments displayed to you as PNGs along
-        with text for goals, analysis, and planning.
+        text for goals, analysis, and planning.
     
-        All games have simple abstract graphics and problems that can be 
+        All games have simple abtract graphics and problems that can be 
         solved using nothing but core knowledge.
     """).strip()
     
@@ -151,68 +151,71 @@ class MultimodalAgent:
         your desired action as if you were a human playing the game describing
         your next action to an LLM which will figure out how to perform it.
                              
-        Return JSON in this format:
+        ```json
         {
             "human_action": "Click on the red square near the bottom left corner",
-            "reasoning": "Explain your reasoning here",
-            "expected_result": "Describe what you expect to happen"
+            "reasoning": "...",
+            "expected_result": "..."                             
         }
                              
-        These are multistep games - only concern yourself with the next action.
-        Favor moves/actions before trying to click on objects. Only start clicking
-        once you're sure movement/actions do nothing.
+        These are going to be multistep games, but only concern yourself with
+        the next action.  You should favor moves/actions before trying to click
+        on objects, only start clicking once you're sure movement/actions do nothing.
+
                              
-        Only respond with the JSON, nothing else.
+        Only response with the JSON, nothing else.
     """).strip()
     
     ANALYZE_INSTRUCT = dedent("""\
-        ## Analysis Instructions
+        ## Instruct
 
-        Given your previous action, expected outcome, and the actual results
-        shown in the images, provide a complete analysis of what happened.
+        Given your action, including your expected outcome, and the provided results
+        via the associated images provide a complet analysis of the outcome, thinking
+        though what happened.  When analizing the images think about the x,y location
+        of objects, their colors, and how they relate to the game state.
                               
-        The images attached are (zero indexed):
-        - 0: Final frame before your action
-        - 1-N: Frames resulting from your action
-        - Last: Helper image showing pixels in red that changed between before and after.
-          Any changes larger than a few pixels should be considered significant.
+        The images attached here are as follows (Zero Indexed):
+        - 0: Final Frame before your Action
+        - 1-N: Frames as a result of your action.
+        - A Helper image showing pixels in red that changed between the Final Frame 
+          before your action and the last frame after your action.  Any changes 
+          larger than a few pixels should be considered significant.
                               
-        When examining images, identify objects, environmental patterns, and their locations.
+        When examining the images try to identify objects or environmental patterns
+        and their locations.
                               
-        Provide your analysis, then after a line with "---", update the game information
-        below while keeping the structure intact. Include what you've tried and what
-        you'd like to try in the future. Note that "Known Human Game Inputs" should
-        never be changed as these are provided by the game itself.
-        
-        Be as specific as possible in the Action Log, indicating what input was tried,
-        the outcome, and your confidence level. Remember that certain actions might
-        currently be blocked by the game environment.
-        
-        Use all this information to understand the game rules and beat the game in
+        Provide your analysis and then after providing `---` update the following
+        information as you see fit while leaving the structure intact, including what
+        you've tried or would like to try in the future.  Note the "Known Human Game
+        Inputs" should never be changed as these are provided by the game itself. When
+        building the Action Long indicating what input was tried and the outcome 
+        you should be as specific as possible, while also indicating how confident you
+        are in that assertion while keeping in mind that certain actions might currently
+        be blocked before of the game environment.  All of this information should be used
+        to understand the game environment and rules in an attempt to beat the game in
         as few moves as possible.        
         ---
     """).strip()
     
     FIND_ACTION_INSTRUCT = dedent("""\
-        Given the provided image and the desired action above, decide what to do
-        based on the following information:
+        Instruct: Given the provided image and the desired action above decide what to do
+        base on the following information:
                                   
         "Move Up" = ACTION1
         "Move Down" = ACTION2
         "Move Left" = ACTION3
         "Move Right" = ACTION4
         "Perform Action" = ACTION5
-        "Click on Object" = ACTION6 (you need to provide x, y coordinates in exact pixels)
-        "Undo" = ACTION7
+        "Click on Object" = ACTION6, You will need to pull the x, y out of the
+            provided image in exact pixels and provide it.
         
-        Return JSON in this format:
+        ```json
         {
             "action": "ACTION1",
             "x": 0,
             "y": 0
         }
-        
-        Only include x and y if the action is ACTION6. Otherwise omit them.
+
         Respond with the JSON, nothing else.
     """).strip()
     
@@ -271,13 +274,13 @@ class MultimodalAgent:
             {human_inputs}
                                      
             ## Current Goal
-            Use the known human game inputs to interact with the game environment and learn the rules.
+            Use the known human game input to interact with the game environment and learn the rules of the game.
                                      
             ## Game Rules
-            Nothing is known currently other than this is a turn-based game that I need to solve.
+            Nothing is known currently other than this is a turn based game that I need to solve.
                                      
             ## Action Log
-            No actions taken so far.
+            No Actions So Far
         """).strip()
     
     def _extract_usage(self, response: Any) -> tuple[int, int]:
