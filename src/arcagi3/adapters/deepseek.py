@@ -24,7 +24,7 @@ class DeepseekAdapter(OpenAIBaseAdapter): # Inherit from OpenAIBaseAdapter
         if not api_key:
             raise ValueError("DEEPSEEK_API_KEY not found in environment variables")
         
-        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
         return client
 
     def make_prediction(self, prompt: str, task_id: Optional[str] = None, test_id: Optional[str] = None, pair_index: int = None) -> Attempt:
