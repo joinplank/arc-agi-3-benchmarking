@@ -52,6 +52,20 @@ def get_human_inputs_text(available_actions: List[str]) -> str:
     return text
 
 
+def grid_to_text_matrix(grid: List[List[int]]) -> str:
+    """
+    Convert a grid matrix to a readable text representation.
+    
+    Args:
+        grid: 64x64 grid of integers (0-15) representing colors
+        
+    Returns:
+        Formatted text representation of the grid
+    """
+    # Format as JSON for clarity and compactness
+    return json.dumps(grid, separators=(',', ','))
+
+
 def extract_json_from_response(response_text: str) -> Dict[str, Any]:
     """
     Extract JSON from various possible formats in the response.
@@ -136,6 +150,18 @@ def extract_json_from_response(response_text: str) -> Dict[str, Any]:
 
 class MultimodalAgent:
     """Agent that plays ARC-AGI-3 games using multimodal LLMs"""
+    
+    # Providers that support multimodal/vision capabilities (can accept images)
+    MULTIMODAL_PROVIDERS = {
+        "openai",
+        "anthropic",
+        "gemini",
+        "fireworks",
+        "huggingfacefireworks",
+        "grok",
+        "openrouter",
+        "xai",
+    }
     
     SYSTEM_PROMPT = dedent("""\
         You are an abstract reasoning agent that is attempting to solve
@@ -261,6 +287,7 @@ class MultimodalAgent:
         self._memory_prompt = ""
         self._previous_action: Optional[Dict[str, Any]] = None
         self._previous_images: List[Image.Image] = []
+        self._previous_grids: List[List[List[int]]] = []  # Store raw grids for text-based providers
         self._previous_score = 0
         
     def _initialize_memory(self, available_actions: List[str]):
@@ -363,7 +390,7 @@ class MultimodalAgent:
         self.total_usage.prompt_tokens += prompt_tokens
         self.total_usage.completion_tokens += completion_tokens
         self.total_usage.total_tokens += prompt_tokens + completion_tokens
-    
+
     def _convert_image_blocks_for_anthropic(self, content: Any) -> Any:
         """Convert OpenAI-style image_url blocks to Anthropic format"""
         if isinstance(content, str):
@@ -468,10 +495,11 @@ class MultimodalAgent:
                     messages=messages,
                     **self.provider.model_config.kwargs
                 )
-    
+
     def _analyze_previous_action(
         self,
         current_frame_images: List[Image.Image],
+        current_frame_grids: List[List[List[int]]],
         current_score: int
     ) -> str:
         """Analyze the results of the previous action"""
@@ -484,18 +512,41 @@ class MultimodalAgent:
         
         analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{self._memory_prompt}"
         
-        # Build images: previous last frame, current frames, diff
-        all_imgs = [
-            self._previous_images[-1],
-            *current_frame_images,
-            image_diff(self._previous_images[-1], current_frame_images[-1]),
-        ]
+        # Check if provider supports multimodal/vision capabilities
+        is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
         
-        # Build message with images
-        msg_parts = [
-            make_image_block(image_to_base64(img))
-            for img in all_imgs
-        ] + [{"type": "text", "text": analyze_prompt}]
+        if is_multimodal:
+            # For multimodal providers, use images
+            all_imgs = [
+                self._previous_images[-1],
+                *current_frame_images,
+                image_diff(self._previous_images[-1], current_frame_images[-1]),
+            ]
+            
+            # Build message with images
+            msg_parts = [
+                make_image_block(image_to_base64(img))
+                for img in all_imgs
+            ] + [{"type": "text", "text": analyze_prompt}]
+        else:
+            # For text-only providers, use text matrices
+            msg_parts = []
+            
+            # Previous frame
+            msg_parts.append({
+                "type": "text",
+                "text": f"Frame 0 (before action):\n{grid_to_text_matrix(self._previous_grids[-1])}"
+            })
+            
+            # Current frames
+            for i, grid in enumerate(current_frame_grids):
+                msg_parts.append({
+                    "type": "text",
+                    "text": f"Frame {i+1} (after action):\n{grid_to_text_matrix(grid)}"
+                })
+            
+            # Add the prompt
+            msg_parts.append({"type": "text", "text": analyze_prompt})
         
         messages = [
             {"role": "system", "content": self.SYSTEM_PROMPT},
@@ -533,6 +584,7 @@ class MultimodalAgent:
     def _choose_human_action(
         self,
         frame_images: List[Image.Image],
+        frame_grids: List[List[List[int]]],
         analysis: str
     ) -> Dict[str, Any]:
         """Choose the next human-level action"""
@@ -541,14 +593,30 @@ class MultimodalAgent:
         else:
             prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         
+        # Check if provider supports multimodal/vision capabilities
+        is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
+        
+        if is_multimodal:
+            # For multimodal providers, use images
+            content = [
+                *[make_image_block(image_to_base64(img)) for img in frame_images],
+                {"type": "text", "text": prompt},
+            ]
+        else:
+            # For text-only providers, use text matrices
+            content = []
+            for i, grid in enumerate(frame_grids):
+                content.append({
+                    "type": "text",
+                    "text": f"Frame {i}:\n{grid_to_text_matrix(grid)}"
+                })
+            content.append({"type": "text", "text": prompt})
+        
         messages = [
             {"role": "system", "content": self.SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": [
-                    *[make_image_block(image_to_base64(img)) for img in frame_images],
-                    {"type": "text", "text": prompt},
-                ],
+                "content": content,
             },
         ]
         
@@ -572,20 +640,40 @@ class MultimodalAgent:
     def _convert_to_game_action(
         self,
         human_action: str,
-        last_frame_image: Image.Image
+        last_frame_image: Image.Image,
+        last_frame_grid: List[List[int]]
     ) -> Dict[str, Any]:
         """Convert human action description to game action"""
+        # Check if provider supports multimodal/vision capabilities
+        is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
+        
+        if is_multimodal:
+            # For multimodal providers, use image
+            content = [
+                make_image_block(image_to_base64(last_frame_image)),
+                {
+                    "type": "text",
+                    "text": human_action + "\n\n" + self.FIND_ACTION_INSTRUCT,
+                },
+            ]
+        else:
+            # For text-only providers, use text matrix
+            content = [
+                {
+                    "type": "text",
+                    "text": f"Current frame:\n{grid_to_text_matrix(last_frame_grid)}"
+                },
+                {
+                    "type": "text",
+                    "text": human_action + "\n\n" + self.FIND_ACTION_INSTRUCT,
+                },
+            ]
+        
         messages = [
             {"role": "system", "content": self.SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": [
-                    make_image_block(image_to_base64(last_frame_image)),
-                    {
-                        "type": "text",
-                        "text": human_action + "\n\n" + self.FIND_ACTION_INSTRUCT,
-                    },
-                ],
+                "content": content,
             },
         ]
         
@@ -674,18 +762,20 @@ class MultimodalAgent:
                         logger.warning("No frames in state, breaking")
                         break
                     
+                    # Store raw grids and convert to images
+                    frame_grids = frames  # frames are already grid matrices from API
                     frame_images = [grid_to_image(frame) for frame in frames]
                     
-                    analysis = self._analyze_previous_action(frame_images, current_score)
+                    analysis = self._analyze_previous_action(frame_images, frame_grids, current_score)
                     
-                    human_action_dict = self._choose_human_action(frame_images, analysis)
+                    human_action_dict = self._choose_human_action(frame_images, frame_grids, analysis)
                     human_action = human_action_dict.get("human_action")
                     
                     if not human_action:
                         logger.error("No human_action in response")
                         break
                     
-                    game_action_dict = self._convert_to_game_action(human_action, frame_images[-1])
+                    game_action_dict = self._convert_to_game_action(human_action, frame_images[-1], frame_grids[-1])
                     action_name = game_action_dict.get("action")
                     
                     if not action_name:
@@ -725,6 +815,7 @@ class MultimodalAgent:
                     
                     self._previous_action = human_action_dict
                     self._previous_images = frame_images
+                    self._previous_grids = frame_grids
                     self._previous_score = current_score
                     current_score = new_score
                     play_action_counter += 1
