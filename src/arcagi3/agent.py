@@ -813,7 +813,7 @@ No Actions So Far
                     current_state = state.get("state", "IN_PROGRESS")
                     
                     action_record = GameActionRecord(
-                        action_num=self.action_counter + play_action_counter + 1,
+                        action_num=self.action_counter + 1,
                         action=action_name,
                         action_data=ActionData(**action_data_dict) if action_data_dict else None,
                         reasoning={
