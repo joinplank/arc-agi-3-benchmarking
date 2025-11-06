@@ -4,6 +4,7 @@ Multimodal Agent for playing ARC-AGI-3 games.
 Adapted from the original multimodal agent to use provider adapters.
 """
 import json
+import os
 import logging
 import time
 from textwrap import dedent
@@ -43,12 +44,14 @@ HUMAN_ACTIONS = {
 }
 
 
+HUMAN_ACTIONS_LIST = list(HUMAN_ACTIONS.keys())
+
 def get_human_inputs_text(available_actions: List[str]) -> str:
     """Convert available actions to human-readable text"""
-    text = ""
+    text = "\n"
     for action in available_actions:
         if action in HUMAN_ACTIONS:
-            text += f"\n- {HUMAN_ACTIONS[action]}"
+            text += f"{HUMAN_ACTIONS[action]}\n"
     return text
 
 
@@ -140,9 +143,9 @@ class MultimodalAgent:
     SYSTEM_PROMPT = dedent("""\
         You are an abstract reasoning agent that is attempting to solve
         turn-based interactive environments displayed to you as PNGs along
-        with text for goals, analysis, and planning.
+        text for goals, analysis, and planning.
     
-        All games have simple abstract graphics and problems that can be 
+        All games have simple abtract graphics and problems that can be 
         solved using nothing but core knowledge.
     """).strip()
     
@@ -151,68 +154,71 @@ class MultimodalAgent:
         your desired action as if you were a human playing the game describing
         your next action to an LLM which will figure out how to perform it.
                              
-        Return JSON in this format:
+        ```json
         {
             "human_action": "Click on the red square near the bottom left corner",
-            "reasoning": "Explain your reasoning here",
-            "expected_result": "Describe what you expect to happen"
+            "reasoning": "...",
+            "expected_result": "..."                             
         }
                              
-        These are multistep games - only concern yourself with the next action.
-        Favor moves/actions before trying to click on objects. Only start clicking
-        once you're sure movement/actions do nothing.
+        These are going to be multistep games, but only concern yourself with
+        the next action.  You should favor moves/actions before trying to click
+        on objects, only start clicking once you're sure movement/actions do nothing.
+
                              
-        Only respond with the JSON, nothing else.
+        Only response with the JSON, nothing else.
     """).strip()
     
     ANALYZE_INSTRUCT = dedent("""\
-        ## Analysis Instructions
+        ## Instruct
 
-        Given your previous action, expected outcome, and the actual results
-        shown in the images, provide a complete analysis of what happened.
+        Given your action, including your expected outcome, and the provided results
+        via the associated images provide a complet analysis of the outcome, thinking
+        though what happened.  When analizing the images think about the x,y location
+        of objects, their colors, and how they relate to the game state.
                               
-        The images attached are (zero indexed):
-        - 0: Final frame before your action
-        - 1-N: Frames resulting from your action
-        - Last: Helper image showing pixels in red that changed between before and after.
-          Any changes larger than a few pixels should be considered significant.
+        The images attached here are as follows (Zero Indexed):
+        - 0: Final Frame before your Action
+        - 1-N: Frames as a result of your action.
+        - A Helper image showing pixels in red that changed between the Final Frame 
+          before your action and the last frame after your action.  Any changes 
+          larger than a few pixels should be considered significant.
                               
-        When examining images, identify objects, environmental patterns, and their locations.
+        When examining the images try to identify objects or environmental patterns
+        and their locations.
                               
-        Provide your analysis, then after a line with "---", update the game information
-        below while keeping the structure intact. Include what you've tried and what
-        you'd like to try in the future. Note that "Known Human Game Inputs" should
-        never be changed as these are provided by the game itself.
-        
-        Be as specific as possible in the Action Log, indicating what input was tried,
-        the outcome, and your confidence level. Remember that certain actions might
-        currently be blocked by the game environment.
-        
-        Use all this information to understand the game rules and beat the game in
+        Provide your analysis and then after providing `---` update the following
+        information as you see fit while leaving the structure intact, including what
+        you've tried or would like to try in the future.  Note the "Known Human Game
+        Inputs" should never be changed as these are provided by the game itself. When
+        building the Action Long indicating what input was tried and the outcome 
+        you should be as specific as possible, while also indicating how confident you
+        are in that assertion while keeping in mind that certain actions might currently
+        be blocked before of the game environment.  All of this information should be used
+        to understand the game environment and rules in an attempt to beat the game in
         as few moves as possible.        
         ---
     """).strip()
     
     FIND_ACTION_INSTRUCT = dedent("""\
-        Given the provided image and the desired action above, decide what to do
-        based on the following information:
+        Instruct: Given the provided image and the desired action above decide what to do
+        base on the following information:
                                   
         "Move Up" = ACTION1
         "Move Down" = ACTION2
         "Move Left" = ACTION3
         "Move Right" = ACTION4
         "Perform Action" = ACTION5
-        "Click on Object" = ACTION6 (you need to provide x, y coordinates in exact pixels)
-        "Undo" = ACTION7
+        "Click on Object" = ACTION6, You will need to pull the x, y out of the
+            provided image in exact pixels and provide it.
         
-        Return JSON in this format:
+        ```json
         {
             "action": "ACTION1",
             "x": 0,
             "y": 0
         }
-        
-        Only include x and y if the action is ACTION6. Otherwise omit them.
+
         Respond with the JSON, nothing else.
     """).strip()
     
@@ -268,16 +274,15 @@ class MultimodalAgent:
         human_inputs = get_human_inputs_text(available_actions)
         self._memory_prompt = dedent(f"""\
             ## Known Human Game Inputs
-            {human_inputs}
-                                     
-            ## Current Goal
-            Use the known human game inputs to interact with the game environment and learn the rules.
-                                     
-            ## Game Rules
-            Nothing is known currently other than this is a turn-based game that I need to solve.
-                                     
-            ## Action Log
-            No actions taken so far.
+            {human_inputs}                
+## Current Goal
+Use the known human game input to interact with the game environment and learn the rules of the game.
+                            
+## Game Rules
+Nothing is known currently other than this is a turn based game that I need to solve.
+                            
+## Action Log
+No Actions So Far
         """).strip()
     
     def _extract_usage(self, response: Any) -> tuple[int, int]:
@@ -522,12 +527,10 @@ class MultimodalAgent:
         # Extract analysis and update memory
         analysis_message = self._extract_content(response)
         logger.info(f"Analysis: {analysis_message[:200]}...")
-        
         before, _, after = analysis_message.partition("---")
         analysis = before.strip()
         if after.strip():
             self._memory_prompt = after.strip()
-        
         return analysis
     
     def _choose_human_action(
@@ -655,6 +658,7 @@ class MultimodalAgent:
             # Initialize memory only on first play, otherwise keep existing memory
             if play_num == 1:
                 available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
+                available_actions = [HUMAN_ACTIONS_LIST[action] for action in available_actions]
                 self._initialize_memory(available_actions)
             else:
                 logger.info(f"Continuing with memory from previous play(s)")
@@ -701,7 +705,18 @@ class MultimodalAgent:
                             "y": max(0, min(y, 127)) // 2,
                         }
                     
-                    reasoning_for_api = human_action_dict.get("reasoning", "")
+                    action_field = action_name
+                    if action_name == "ACTION6" and action_data_dict:
+                        action_field = f"{action_name}: [{action_data_dict}]"
+
+                    reasoning_for_api = {
+                        "analysis": analysis[:1000] if len(analysis) > 1000 else analysis,
+                        "action": action_field,
+                        "human_action": human_action,
+                        "reasoning": (human_action_dict.get("reasoning", "") or "")[:300],
+                        "expected": (human_action_dict.get("expected_result", "") or "")[:300],
+                        "tokens:": [self.total_usage.prompt_tokens, self.total_usage.completion_tokens],
+                    }
                     state = self._execute_game_action(action_name, action_data_dict, game_id, guid, reasoning_for_api)
                     guid = state.get("guid", guid)
                     new_score = state.get("score", current_score)
