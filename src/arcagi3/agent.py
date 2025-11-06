@@ -4,6 +4,7 @@ Multimodal Agent for playing ARC-AGI-3 games.
 Adapted from the original multimodal agent to use provider adapters.
 """
 import json
+import os
 import logging
 import time
 from textwrap import dedent
@@ -43,12 +44,14 @@ HUMAN_ACTIONS = {
 }
 
 
+HUMAN_ACTIONS_LIST = list(HUMAN_ACTIONS.keys())
+
 def get_human_inputs_text(available_actions: List[str]) -> str:
     """Convert available actions to human-readable text"""
-    text = ""
+    text = "\n"
     for action in available_actions:
         if action in HUMAN_ACTIONS:
-            text += f"\n- {HUMAN_ACTIONS[action]}"
+            text += f"{HUMAN_ACTIONS[action]}\n"
     return text
 
 
@@ -271,16 +274,15 @@ class MultimodalAgent:
         human_inputs = get_human_inputs_text(available_actions)
         self._memory_prompt = dedent(f"""\
             ## Known Human Game Inputs
-            {human_inputs}
-                                     
-            ## Current Goal
-            Use the known human game input to interact with the game environment and learn the rules of the game.
-                                     
-            ## Game Rules
-            Nothing is known currently other than this is a turn based game that I need to solve.
-                                     
-            ## Action Log
-            No Actions So Far
+            {human_inputs}                
+## Current Goal
+Use the known human game input to interact with the game environment and learn the rules of the game.
+                            
+## Game Rules
+Nothing is known currently other than this is a turn based game that I need to solve.
+                            
+## Action Log
+No Actions So Far
         """).strip()
     
     def _extract_usage(self, response: Any) -> tuple[int, int]:
@@ -525,12 +527,10 @@ class MultimodalAgent:
         # Extract analysis and update memory
         analysis_message = self._extract_content(response)
         logger.info(f"Analysis: {analysis_message[:200]}...")
-        
         before, _, after = analysis_message.partition("---")
         analysis = before.strip()
         if after.strip():
             self._memory_prompt = after.strip()
-        
         return analysis
     
     def _choose_human_action(
@@ -658,6 +658,7 @@ class MultimodalAgent:
             # Initialize memory only on first play, otherwise keep existing memory
             if play_num == 1:
                 available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
+                available_actions = [HUMAN_ACTIONS_LIST[action] for action in available_actions]
                 self._initialize_memory(available_actions)
             else:
                 logger.info(f"Continuing with memory from previous play(s)")
