@@ -292,10 +292,10 @@ class MultimodalAgent:
         
     def _initialize_memory(self, available_actions: List[str]):
         """Initialize the agent's memory with game info"""
-        human_inputs = get_human_inputs_text(available_actions)
+        human_actions = "\n".join(available_actions)
         self._memory_prompt = dedent(f"""\
             ## Known Human Game Inputs
-            {human_inputs}                
+            {human_actions}                
 ## Current Goal
 Use the known human game input to interact with the game environment and learn the rules of the game.
                             
