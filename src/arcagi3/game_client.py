@@ -186,6 +186,7 @@ class GameClient:
         }
         if guid:
             data["guid"] = guid
+        data["reasoning"] = "Resetting the game to initial state"
         
         return self.execute_action("RESET", data)
     
