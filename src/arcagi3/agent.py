@@ -880,12 +880,7 @@ No Actions So Far
         available_actions = [f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
         is_multimodal = self.provider.model_config.provider not in self.LLM_PROVIDERS
 
-        content = [
-            {
-                "type": "text",
-                "text": self._memory_prompt
-            }
-        ]
+        content = []
         if is_multimodal and self._use_vision:
             # For multimodal providers, use image
             content.append(
