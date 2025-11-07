@@ -490,8 +490,8 @@ models:
     max_completion_tokens: 10000
     pricing:
       date: "2025-02-23"
-      input: 15.00
-      output: 60.00
+      input: 0.15
+      output: 0.60
 
   - name: "gpt-4.5-2025-02-21-alpha"
     model_name: "gpt-4.5-2025-02-21-alpha"

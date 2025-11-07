@@ -25,6 +25,10 @@ from .schemas import (
     Cost,
     Usage,
     CompletionTokensDetails,
+    MessageRecord,
+    MessageExchange,
+    ConversationLog,
+    MessageContentBlock,
 )
 from .utils.retry import retry_with_exponential_backoff
 
@@ -289,6 +293,10 @@ class MultimodalAgent:
         )
         self.action_history: List[GameActionRecord] = []
         
+        # Message tracking
+        self.conversation_exchanges: List[MessageExchange] = []
+        self.exchange_counter = 0
+        
         # Memory for the agent
         self._memory_prompt = ""
         self._previous_action: Optional[Dict[str, Any]] = None
@@ -379,6 +387,93 @@ No Actions So Far
         logger.warning(f"Unknown response format. Type: {type(response)}")
         return ""
     
+    def _convert_message_to_record(self, message: Dict[str, Any]) -> MessageRecord:
+        """
+        Convert a message dict to a MessageRecord for tracking.
+        
+        Args:
+            message: Message dict with role and content
+            
+        Returns:
+            MessageRecord with formatted content
+        """
+        content = message.get("content", "")
+        timestamp = datetime.now(timezone.utc)
+        
+        # Handle string content
+        if isinstance(content, str):
+            return MessageRecord(
+                role=message.get("role", "unknown"),
+                content=content,
+                timestamp=timestamp
+            )
+        
+        # Handle list content (mixed text and images)
+        elif isinstance(content, list):
+            content_blocks = []
+            for block in content:
+                if isinstance(block, dict):
+                    block_type = block.get("type", "unknown")
+                    
+                    if block_type == "text":
+                        content_blocks.append(MessageContentBlock(
+                            type="text",
+                            text=block.get("text", "")
+                        ))
+                    
+                    elif block_type == "image_url":
+                        image_url = block.get("image_url", {})
+                        url = image_url.get("url", "")
+                        
+                        if url.startswith("data:image/"):
+                            # Extract base64 data
+                            header, base64_data = url.split(",", 1) if "," in url else (url, "")
+                            media_type = header.split(";")[0].replace("data:", "") if "data:" in header else "unknown"
+                            
+                            content_blocks.append(MessageContentBlock(
+                                type="image_url",
+                                media_type=media_type,
+                                base64_data=base64_data,
+                                size_bytes=len(base64_data) if base64_data else 0
+                            ))
+                        else:
+                            content_blocks.append(MessageContentBlock(
+                                type="image_url",
+                                image_url={"url": url}
+                            ))
+                    
+                    elif block_type == "image":
+                        # Anthropic format
+                        source = block.get("source", {})
+                        media_type = source.get("media_type", "unknown")
+                        base64_data = source.get("data", "")
+                        
+                        content_blocks.append(MessageContentBlock(
+                            type="image",
+                            media_type=media_type,
+                            base64_data=base64_data,
+                            size_bytes=len(base64_data) if base64_data else 0
+                        ))
+                    else:
+                        # Unknown block type, store as dict
+                        content_blocks.append(block)
+                else:
+                    # Non-dict block, store as-is
+                    content_blocks.append(block)
+            
+            return MessageRecord(
+                role=message.get("role", "unknown"),
+                content=[block.model_dump() if isinstance(block, MessageContentBlock) else block for block in content_blocks],
+                timestamp=timestamp
+            )
+        else:
+            # Unknown content type, store as-is
+            return MessageRecord(
+                role=message.get("role", "unknown"),
+                content=str(content),
+                timestamp=timestamp
+            )
+    
     def _update_costs(self, prompt_tokens: int, completion_tokens: int):
         """Update cost and usage tracking"""
         # Get pricing from model config
@@ -430,19 +525,119 @@ No Actions So Far
             return converted
         return content
     
+    def _track_exchange(
+        self,
+        exchange_type: str,
+        request_messages: List[MessageRecord],
+        response: Any,
+        provider_name: str,
+        model_name: str,
+        anthropic_system: Optional[str],
+        timestamp: datetime
+    ):
+        """
+        Track a message exchange in the conversation log.
+        
+        Args:
+            exchange_type: Type of exchange (e.g., "analysis", "choose_action", "convert_action")
+            request_messages: List of request messages as MessageRecord
+            response: Provider response object
+            provider_name: Name of the provider
+            model_name: Name of the model
+            anthropic_system: System message for Anthropic (if applicable)
+            timestamp: Timestamp of the exchange
+        """
+        # Extract usage and cost
+        prompt_tokens, completion_tokens = self._extract_usage(response)
+        
+        # Calculate cost for this exchange
+        input_cost_per_token = self.provider.model_config.pricing.input / 1_000_000
+        output_cost_per_token = self.provider.model_config.pricing.output / 1_000_000
+        prompt_cost = prompt_tokens * input_cost_per_token
+        completion_cost = completion_tokens * output_cost_per_token
+        
+        exchange_usage = Usage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            completion_tokens_details=CompletionTokensDetails()
+        )
+        
+        exchange_cost = Cost(
+            prompt_cost=prompt_cost,
+            completion_cost=completion_cost,
+            total_cost=prompt_cost + completion_cost
+        )
+        
+        # Extract response content and convert to MessageRecord
+        response_content = self._extract_content(response)
+        response_message = MessageRecord(
+            role="assistant",
+            content=response_content,
+            timestamp=timestamp
+        )
+        
+        # Create exchange
+        self.exchange_counter += 1
+        exchange = MessageExchange(
+            exchange_id=self.exchange_counter,
+            exchange_type=exchange_type,
+            request_messages=request_messages,
+            response_message=response_message,
+            provider=provider_name,
+            model=model_name,
+            usage=exchange_usage,
+            cost=exchange_cost,
+            timestamp=timestamp,
+            anthropic_system=anthropic_system
+        )
+        
+        # Add to conversation log
+        self.conversation_exchanges.append(exchange)
+    
     @retry_with_exponential_backoff(max_retries=3)
-    def _call_provider(self, messages: List[Dict[str, Any]]) -> Any:
-        """Call provider with retry logic"""
+    def _call_provider(
+        self, 
+        messages: List[Dict[str, Any]], 
+        exchange_type: str = "unknown"
+    ) -> Any:
+        """
+        Call provider with retry logic and track message exchange.
+        
+        Args:
+            messages: List of messages to send
+            exchange_type: Type of exchange (e.g., "analysis", "choose_action", "convert_action")
+        """
         # Use the provider's client directly for multimodal support
         # Most providers follow OpenAI-style API
         provider_name = self.provider.model_config.provider
+        model_name = self.provider.model_config.model_name
+        
+        # Track exchange start time
+        exchange_timestamp = datetime.now(timezone.utc)
+        
+        # Convert request messages to MessageRecord format
+        request_message_records = [self._convert_message_to_record(msg) for msg in messages]
         
         if provider_name == "openai":
-            return self.provider.client.chat.completions.create(
-                model=self.provider.model_config.model_name,
+            response = self.provider.client.chat.completions.create(
+                model=model_name,
                 messages=messages,
                 **self.provider.model_config.kwargs
             )
+            
+            # Track this exchange
+            self._track_exchange(
+                exchange_type=exchange_type,
+                request_messages=request_message_records,
+                response=response,
+                provider_name=provider_name,
+                model_name=model_name,
+                anthropic_system=None,
+                timestamp=exchange_timestamp
+            )
+            
+            return response
         elif provider_name == "anthropic":
             # Anthropic requires system messages as separate parameter, not in messages array
             # Extract system messages and filter them out
@@ -477,29 +672,68 @@ No Actions So Far
             if system_content:
                 anthropic_kwargs["system"] = system_content
             
-            return self.provider.client.messages.create(
-                model=self.provider.model_config.model_name,
+            response = self.provider.client.messages.create(
+                model=model_name,
                 messages=filtered_messages,
                 **anthropic_kwargs
             )
+            
+            # Track this exchange (use original messages for tracking, system is in anthropic_system)
+            self._track_exchange(
+                exchange_type=exchange_type,
+                request_messages=request_message_records,
+                response=response,
+                provider_name=provider_name,
+                model_name=model_name,
+                anthropic_system=system_content,
+                timestamp=exchange_timestamp
+            )
+            
+            return response
         elif provider_name == "gemini":
             # GeminiAdapter handles message conversion internally
-            return self.provider.chat_completion(messages)
+            response = self.provider.chat_completion(messages)
+            
+            # Track this exchange
+            self._track_exchange(
+                exchange_type=exchange_type,
+                request_messages=request_message_records,
+                response=response,
+                provider_name=provider_name,
+                model_name=model_name,
+                anthropic_system=None,
+                timestamp=exchange_timestamp
+            )
+            
+            return response
         else:
             # For other providers, try OpenAI-compatible format
             try:
-                return self.provider.client.chat.completions.create(
-                    model=self.provider.model_config.model_name,
+                response = self.provider.client.chat.completions.create(
+                    model=model_name,
                     messages=messages,
                     **self.provider.model_config.kwargs
                 )
             except AttributeError:
                 # Fallback to direct client call
-                return self.provider.client.create(
-                    model=self.provider.model_config.model_name,
+                response = self.provider.client.create(
+                    model=model_name,
                     messages=messages,
                     **self.provider.model_config.kwargs
                 )
+            
+            # Track this exchange
+            self._track_exchange(
+                exchange_type=exchange_type,
+                request_messages=request_message_records,
+                response=response,
+                provider_name=provider_name,
+                model_name=model_name,
+                anthropic_system=None,
+                timestamp=exchange_timestamp
+            )
+            
+            return response
 
     def _analyze_previous_action(
         self,
@@ -569,7 +803,7 @@ No Actions So Far
             },
         ]
         
-        response = self._call_provider(messages)
+        response = self._call_provider(messages, exchange_type="analysis")
         
         # Track costs - handle different response formats
         prompt_tokens, completion_tokens = self._extract_usage(response)
@@ -623,7 +857,7 @@ No Actions So Far
             },
         ]
         
-        response = self._call_provider(messages)
+        response = self._call_provider(messages, exchange_type="choose_action")
         
         # Track costs
         prompt_tokens, completion_tokens = self._extract_usage(response)
@@ -680,7 +914,7 @@ No Actions So Far
             },
         ]
         
-        response = self._call_provider(messages)
+        response = self._call_provider(messages, exchange_type="convert_action")
         
         # Track costs
         prompt_tokens, completion_tokens = self._extract_usage(response)
@@ -848,6 +1082,9 @@ No Actions So Far
             play_duration = time.time() - play_start_time
             scorecard_url = f"{self.game_client.ROOT_URL}/scorecards/{self.card_id}"
             
+            # Create conversation log from all exchanges
+            conversation_log = ConversationLog(exchanges=self.conversation_exchanges)
+            
             play_result = GameResult(
                 game_id=game_id,
                 config=self.config,
@@ -860,7 +1097,8 @@ No Actions So Far
                 actions=play_action_history,
                 final_memory=self._memory_prompt,
                 timestamp=datetime.now(timezone.utc),
-                scorecard_url=scorecard_url
+                scorecard_url=scorecard_url,
+                conversation_log=conversation_log
             )
             
             logger.info(

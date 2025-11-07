@@ -62,6 +62,64 @@ class GameActionRecord(BaseModel):
     cost: Optional["Cost"] = None
 
 
+# ============================================================================
+# Message Tracking Schemas
+# ============================================================================
+
+class MessageContentBlock(BaseModel):
+    """A single content block in a message (text or image)"""
+    type: str  # "text", "image_url", "image"
+    text: Optional[str] = None
+    image_url: Optional[Dict[str, Any]] = None
+    media_type: Optional[str] = None
+    base64_data: Optional[str] = None
+    size_bytes: Optional[int] = None
+
+
+class MessageRecord(BaseModel):
+    """A single message in a conversation"""
+    role: str  # "system", "user", "assistant"
+    content: Union[str, List[MessageContentBlock], List[Dict[str, Any]]]  # Can be string or list of blocks
+    timestamp: Optional[datetime] = None
+    
+    model_config = {
+        'json_encoders': {
+            datetime: lambda v: v.isoformat() if v else None
+        }
+    }
+
+
+class MessageExchange(BaseModel):
+    """A complete exchange: request messages and response"""
+    exchange_id: int  # Sequential ID for this exchange
+    exchange_type: str  # "analysis", "choose_action", "convert_action", etc.
+    request_messages: List[MessageRecord]
+    response_message: Optional[MessageRecord] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    usage: Optional["Usage"] = None
+    cost: Optional["Cost"] = None
+    timestamp: Optional[datetime] = None
+    anthropic_system: Optional[str] = None  # Separate system message for Anthropic
+    
+    model_config = {
+        'json_encoders': {
+            datetime: lambda v: v.isoformat() if v else None
+        }
+    }
+
+
+class ConversationLog(BaseModel):
+    """Complete log of all messages exchanged during a game"""
+    exchanges: List[MessageExchange]
+    
+    model_config = {
+        'json_encoders': {
+            datetime: lambda v: v.isoformat() if v else None
+        }
+    }
+
+
 class GameResult(BaseModel):
     """Complete result of playing a single game"""
     game_id: str
@@ -76,6 +134,7 @@ class GameResult(BaseModel):
     final_memory: Optional[str] = None
     timestamp: datetime = None
     scorecard_url: Optional[str] = None
+    conversation_log: Optional[ConversationLog] = None
     
     model_config = {
         'json_encoders': {
