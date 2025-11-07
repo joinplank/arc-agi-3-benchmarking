@@ -786,7 +786,7 @@ No Actions So Far
             {"role": "system", "content": self.SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": [{"type": "text", "text": str(self._previous_action)}],
+                "content": [{"type": "text", "text": str(self._memory_prompt)}],
             },
             {
                 "role": "assistant",
