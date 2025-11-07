@@ -54,6 +54,7 @@ def get_human_inputs_text(available_actions: List[str]) -> str:
     """Convert available actions to human-readable text"""
     text = "\n"
     for action in available_actions:
+        print(action)
         if action in HUMAN_ACTIONS:
             text += f"{HUMAN_ACTIONS[action]}\n"
     return text
@@ -296,10 +297,14 @@ class MultimodalAgent:
         
     def _initialize_memory(self, available_actions: List[str]):
         """Initialize the agent's memory with game info"""
-        human_inputs = get_human_inputs_text(available_actions)
+
+        human_actions = "\n".join(available_actions)
+
+
         self._memory_prompt = dedent(f"""\
             ## Known Human Game Inputs
-            {human_inputs}                
+{human_actions}
+
 ## Current Goal
 Use the known human game input to interact with the game environment and learn the rules of the game.
                             
