@@ -802,8 +802,9 @@ No Actions So Far
                     new_score = state.get("score", current_score)
                     current_state = state.get("state", "IN_PROGRESS")
                     
+                    self.action_counter += 1
                     action_record = GameActionRecord(
-                        action_num=self.action_counter + play_action_counter + 1,
+                        action_num=self.action_counter,
                         action=action_name,
                         action_data=ActionData(**action_data_dict) if action_data_dict else None,
                         reasoning={
@@ -824,7 +825,6 @@ No Actions So Far
                     self._previous_score = current_score
                     current_score = new_score
                     play_action_counter += 1
-                    self.action_counter += 1
                     
                     logger.info(
                         f"Play {play_num}, Action {play_action_counter}: {action_name}, "
