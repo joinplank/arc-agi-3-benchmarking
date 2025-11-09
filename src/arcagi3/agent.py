@@ -647,13 +647,7 @@ No Actions So Far
         is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
         available_actions = [f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
         
-        content = [
-            {
-                "type": "text",
-                "text": self._memory_prompt
-            }
-        ]
-        
+        content = []
         if is_multimodal:
             # For multimodal providers, use image
             content.append(
