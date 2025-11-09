@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
 from PIL import Image
+from pydantic_core.core_schema import ContextT
 
 from .adapters import create_provider
 from .game_client import GameClient
@@ -645,19 +646,27 @@ No Actions So Far
         # Check if provider supports multimodal/vision capabilities
         is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
         available_actions = [f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
+        
+        content = [
+            {
+                "type": "text",
+                "text": self._memory_prompt
+            }
+        ]
+        
         if is_multimodal:
             # For multimodal providers, use image
-            content = [
+            content.append(
                 make_image_block(image_to_base64(last_frame_image)),
-            ]
+            )
         else:
             # For text-only providers, use text matrix
-            content = [
+            content.append(
                 {
                     "type": "text",
                     "text": f"Current frame:\n{grid_to_text_matrix(last_frame_grid)}"
                 },
-            ]
+            )
         content.append({
             "type": "text",
             "text": human_action + "\n\n" + self.FIND_ACTION_INSTRUCT.replace("{{action_list}}", "\n".join(available_actions)),
