@@ -52,6 +52,7 @@ htmlcov/
 # Private configs
 models_private.yml
 provider_config.yml
+hints.yml 
 
 # Redundant documentation (consolidated in README.md)
 IMPLEMENTATION.md

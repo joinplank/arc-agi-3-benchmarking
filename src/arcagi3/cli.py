@@ -85,6 +85,19 @@ def run_batch_games(
         logger.info(f"Game {i}/{len(game_ids)}: {game_id}")
         logger.info(f"{'='*60}")
         
+        from arcagi3.utils import load_hints, find_hints_file
+        
+        hints_file = find_hints_file()
+        hint_found = False
+        if hints_file:
+            hints = load_hints(hints_file, game_id=game_id)
+            hint_found = game_id in hints
+        
+        if hint_found:
+            print(f"✓ Hint found for game {game_id}")
+        else:
+            print(f"⊘ No hint found for game {game_id}")
+        
         try:
             result = tester.play_game(game_id)
             if result:

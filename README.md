@@ -56,6 +56,7 @@ python main.py \
   --save_results_dir "results/gpt4o"
 ```
 
+
 ### Run Multiple Games
 
 ```bash
@@ -193,6 +194,24 @@ Models are defined in `src/arcagi3/models.yml`:
 ```
 
 90+ models pre-configured. Use the `name` field in CLI.
+
+### Hints Configuration
+
+Hints for specific games can be provided via a `hints.yml` file in the project root or current working directory. Hints are automatically loaded and prepended to the system prompt at the start of all LLM calls.
+
+**Example `hints.yml`:**
+```yaml
+ls20-fa137e247ce6: |
+  This is a hint for game ls20-fa137e247ce6.
+  
+  The hint can contain multiple lines and markdown formatting:
+  - Look for patterns in the grid
+  - Pay attention to color changes
+  
+ft09-16726c5b26ff: "Single-line hint for another game."
+```
+
+The agent automatically looks for `hints.yml` in the current working directory or project root. If the file doesn't exist, no hints are used. See `hints.example.yml` for a complete example.
 
 ### Provider Setup
 
