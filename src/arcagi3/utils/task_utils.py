@@ -21,12 +21,12 @@ def find_hints_file() -> Optional[str]:
 
 def load_hints(hints_file: Optional[str] = None, game_id: Optional[str] = None) -> Dict[str, str]:
     """
-    Load hints from a YAML or JSON file.
+    Load hints from a YAML file.
     
     The file should contain a mapping of game_id to hint text (markdown string).
     
     Args:
-        hints_file: Path to hints file (YAML or JSON). If None, returns empty dict.
+        hints_file: Path to hints YAML file. If None, returns empty dict.
         game_id: Optional specific game_id to load hint for. If provided, only returns hint for that game.
         
     Returns:
@@ -39,29 +39,12 @@ def load_hints(hints_file: Optional[str] = None, game_id: Optional[str] = None) 
         
         ft09-16726c5b26ff: |
             Another hint for a different game.
-    
-    Example JSON format:
-        {
-            "ls20-fa137e247ce6": "This is a hint for game ls20-fa137e247ce6.",
-            "ft09-16726c5b26ff": "Another hint for a different game."
-        }
     """
     if not hints_file or not os.path.exists(hints_file):
         return {}
     
     with open(hints_file, 'r') as f:
-        if hints_file.endswith('.yaml') or hints_file.endswith('.yml'):
-            hints_data = yaml.safe_load(f)
-        elif hints_file.endswith('.json'):
-            hints_data = json.load(f)
-        else:
-            # Try YAML first, then JSON
-            try:
-                f.seek(0)
-                hints_data = yaml.safe_load(f)
-            except:
-                f.seek(0)
-                hints_data = json.load(f)
+        hints_data = yaml.safe_load(f)
     
     if not isinstance(hints_data, dict):
         raise ValueError(f"Hints file must contain a dictionary/mapping. Got {type(hints_data)}")
