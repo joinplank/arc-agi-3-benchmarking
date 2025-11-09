@@ -308,7 +308,7 @@ class MultimodalAgent:
         if self.current_hint:
             hint = self.current_hint.strip()
             if hint:
-                system_prompt = f"{system_prompt}\n\n Use these hints inorder to complete the game: {hint} "
+                system_prompt = f"{system_prompt}\n\n ALSO USE these hints in order to complete the game: \n {hint} "
                 logger.info(f"Using hint for game {self.current_game_id}")
         
         return system_prompt
