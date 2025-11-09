@@ -155,7 +155,16 @@ class MultimodalAgent:
     """Agent that plays ARC-AGI-3 games using multimodal LLMs"""
     
     # Providers that don't support multimodal/vision capabilities (only text)
-    LLM_PROVIDERS = ["deepseek"]
+    MULTIMODAL_PROVIDERS = {
+        "openai",
+        "anthropic",
+        "gemini",
+        "fireworks",
+        "huggingfacefireworks",
+        "grok",
+        "openrouter",
+        "xai",
+    }
     
     SYSTEM_PROMPT = dedent("""\
         You are an abstract reasoning agent that is attempting to solve
@@ -508,7 +517,7 @@ No Actions So Far
         analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{self._memory_prompt}"
         
         # Check if provider supports multimodal/vision capabilities
-        is_multimodal = self.provider.model_config.provider not in self.LLM_PROVIDERS
+        is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
         
         if is_multimodal and self._use_vision:
             # For multimodal providers, use images
@@ -587,7 +596,7 @@ No Actions So Far
             prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         
         # Check if provider supports multimodal/vision capabilities
-        is_multimodal = self.provider.model_config.provider not in self.LLM_PROVIDERS
+        is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
         
         if is_multimodal and self._use_vision:
             # For multimodal providers, use images
