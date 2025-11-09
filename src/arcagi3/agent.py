@@ -290,6 +290,7 @@ class MultimodalAgent:
         self._previous_images: List[Image.Image] = []
         self._previous_grids: List[List[List[int]]] = []  # Store raw grids for text-based providers
         self._previous_score = 0
+        self._previous_prompt = ""
         
     def _initialize_memory(self, available_actions: List[str]):
         """Initialize the agent's memory with game info"""
@@ -553,7 +554,7 @@ No Actions So Far
             {"role": "system", "content": self.SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": [{"type": "text", "text": str(self._memory_prompt)}],
+                "content": [{"type": "text", "text": self._previous_prompt}],
             },
             {
                 "role": "assistant",
@@ -588,9 +589,9 @@ No Actions So Far
     ) -> Dict[str, Any]:
         """Choose the next human-level action"""
         if len(analysis) > 20:
-            prompt = f"{analysis}\n\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            self._previous_prompt = f"{analysis}\n\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         else:
-            prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            self._previous_prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         
         # Check if provider supports multimodal/vision capabilities
         is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
@@ -599,7 +600,6 @@ No Actions So Far
             # For multimodal providers, use images
             content = [
                 *[make_image_block(image_to_base64(img)) for img in frame_images],
-                {"type": "text", "text": prompt},
             ]
         else:
             # For text-only providers, use text matrices
@@ -609,7 +609,7 @@ No Actions So Far
                     "type": "text",
                     "text": f"Frame {i}:\n{grid_to_text_matrix(grid)}"
                 })
-            content.append({"type": "text", "text": prompt})
+        content.append({"type": "text", "text": self._previous_prompt})
         
         messages = [
             {"role": "system", "content": self.SYSTEM_PROMPT},
