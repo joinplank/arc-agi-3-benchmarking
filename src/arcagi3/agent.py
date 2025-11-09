@@ -295,7 +295,8 @@ class MultimodalAgent:
         human_actions = "\n".join(available_actions)
         self._memory_prompt = dedent(f"""\
             ## Known Human Game Inputs
-            {human_actions}                
+{human_actions}
+
 ## Current Goal
 Use the known human game input to interact with the game environment and learn the rules of the game.
                             
