@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
 from PIL import Image
-from pydantic_core.core_schema import ContextT
 
 from .adapters import create_provider
 from .game_client import GameClient
