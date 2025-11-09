@@ -228,15 +228,8 @@ class MultimodalAgent:
     
     FIND_ACTION_INSTRUCT = dedent("""\
         Instruct: Given the provided image and the desired action above decide what to do
-        base on the following information:
-                                  
-        "Move Up" = ACTION1
-        "Move Down" = ACTION2
-        "Move Left" = ACTION3
-        "Move Right" = ACTION4
-        "Perform Action" = ACTION5
-        "Click on Object" = ACTION6, You will need to pull the x, y out of the
-            provided image in exact pixels and provide it.
+        base on the following information:                      
+        {{action_list}}
         
         ```json
         {
@@ -244,7 +237,7 @@ class MultimodalAgent:
             "x": 0,
             "y": 0
         }
-
+        ```
         Respond with the JSON, nothing else.
     """).strip()
     
@@ -290,6 +283,7 @@ class MultimodalAgent:
         self.action_history: List[GameActionRecord] = []
         
         # Memory for the agent
+        self._available_actions: List[str] = []
         self._memory_prompt = ""
         self._previous_action: Optional[Dict[str, Any]] = None
         self._previous_images: List[Image.Image] = []
@@ -298,10 +292,10 @@ class MultimodalAgent:
         
     def _initialize_memory(self, available_actions: List[str]):
         """Initialize the agent's memory with game info"""
-        human_inputs = get_human_inputs_text(available_actions)
+        human_actions = "\n".join(available_actions)
         self._memory_prompt = dedent(f"""\
             ## Known Human Game Inputs
-            {human_inputs}                
+            {human_actions}                
 ## Current Goal
 Use the known human game input to interact with the game environment and learn the rules of the game.
                             
@@ -649,15 +643,11 @@ No Actions So Far
         """Convert human action description to game action"""
         # Check if provider supports multimodal/vision capabilities
         is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
-        
+        available_actions = [f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
         if is_multimodal:
             # For multimodal providers, use image
             content = [
                 make_image_block(image_to_base64(last_frame_image)),
-                {
-                    "type": "text",
-                    "text": human_action + "\n\n" + self.FIND_ACTION_INSTRUCT,
-                },
             ]
         else:
             # For text-only providers, use text matrix
@@ -666,11 +656,11 @@ No Actions So Far
                     "type": "text",
                     "text": f"Current frame:\n{grid_to_text_matrix(last_frame_grid)}"
                 },
-                {
-                    "type": "text",
-                    "text": human_action + "\n\n" + self.FIND_ACTION_INSTRUCT,
-                },
             ]
+        content.append({
+            "type": "text",
+            "text": human_action + "\n\n" + self.FIND_ACTION_INSTRUCT.replace("{{action_list}}", "\n".join(available_actions)),
+        })
         
         messages = [
             {"role": "system", "content": self.SYSTEM_PROMPT},
@@ -745,9 +735,9 @@ No Actions So Far
             
             # Initialize memory only on first play, otherwise keep existing memory
             if play_num == 1:
-                available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
-                available_actions = [HUMAN_ACTIONS_LIST[action] for action in available_actions]
-                self._initialize_memory(available_actions)
+                self._available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
+                available_codes = [f"{HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
+                self._initialize_memory(available_codes)
             else:
                 logger.info(f"Continuing with memory from previous play(s)")
             
@@ -812,8 +802,9 @@ No Actions So Far
                     new_score = state.get("score", current_score)
                     current_state = state.get("state", "IN_PROGRESS")
                     
+                    self.action_counter += 1
                     action_record = GameActionRecord(
-                        action_num=self.action_counter + play_action_counter + 1,
+                        action_num=self.action_counter,
                         action=action_name,
                         action_data=ActionData(**action_data_dict) if action_data_dict else None,
                         reasoning={
@@ -834,7 +825,6 @@ No Actions So Far
                     self._previous_score = current_score
                     current_score = new_score
                     play_action_counter += 1
-                    self.action_counter += 1
                     
                     logger.info(
                         f"Play {play_num}, Action {play_action_counter}: {action_name}, "
