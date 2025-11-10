@@ -185,6 +185,7 @@ class ModelConfig(BaseModel):
     name: str  # Config name
     model_name: str  # The actual model name to use with the provider's API
     provider: str
+    is_multimodal: bool = False
     pricing: ModelPricing
     api_type: Optional[str] = APIType.CHAT_COMPLETIONS
     kwargs: Dict[str, Any] = {}
@@ -202,7 +203,7 @@ class ModelConfig(BaseModel):
             return values
             
         kwargs = {}
-        known_fields = {'name', 'provider', 'pricing', 'kwargs', 'model_name', 'api_type'}
+        known_fields = {'name', 'provider', 'pricing', 'kwargs', 'model_name', 'api_type', 'is_multimodal'}
         
         for field_name, value in values.items():
             if field_name not in known_fields:
@@ -216,6 +217,10 @@ class ModelConfig(BaseModel):
             for field_name in kwargs:
                 if field_name in values:
                     del values[field_name]
+        
+        # Ensure capability flags are not kept in kwargs accidentally
+        if 'kwargs' in values and isinstance(values['kwargs'], dict):
+            values['kwargs'].pop('is_multimodal', None)
                     
         return values
 
