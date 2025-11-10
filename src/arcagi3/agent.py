@@ -15,7 +15,7 @@ from PIL import Image
 
 from .adapters import create_provider
 from .game_client import GameClient
-from .image_utils import grid_to_image, image_to_base64, make_image_block, image_diff
+from .image_utils import grid_to_image, image_to_base64, make_image_block, image_diff, display_image_in_terminal
 from .schemas import (
     GameAction,
     GameState,
@@ -249,6 +249,7 @@ class MultimodalAgent:
         max_actions: int = 40,
         retry_attempts: int = 3,
         num_plays: int = 1,
+        show_images: bool = False,
     ):
         """
         Initialize the multimodal agent.
@@ -260,6 +261,7 @@ class MultimodalAgent:
             max_actions: Maximum actions to take before stopping
             retry_attempts: Number of retry attempts for failed API calls
             num_plays: Number of times to play the game (continues session with memory)
+            show_images: Whether to display game frames in the terminal
         """
         self.config = config
         self.game_client = game_client
@@ -267,6 +269,7 @@ class MultimodalAgent:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
+        self.show_images = show_images
         
         # Initialize provider adapter
         self.provider = create_provider(config)
@@ -759,6 +762,11 @@ No Actions So Far
                     # Store raw grids and convert to images
                     frame_grids = frames  # frames are already grid matrices from API
                     frame_images = [grid_to_image(frame) for frame in frames]
+                    
+                    # Display images in terminal if enabled
+                    if self.show_images and frame_images:
+                        print(f"\nFrame {play_action_counter + 1} | Score: {current_score}")
+                        display_image_in_terminal(frame_images[-1])
                     
                     analysis = self._analyze_previous_action(frame_images, frame_grids, current_score)
                     

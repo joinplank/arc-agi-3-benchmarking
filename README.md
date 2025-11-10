@@ -70,6 +70,19 @@ python -m arcagi3.cli \
   --config "gpt-4o-2024-11-20"
 ```
 
+### Display Images in Terminal
+
+Show game frames directly in your terminal during gameplay:
+
+```bash
+python main.py \
+  --game_id "ls20-fa137e247ce6" \
+  --config "gpt-4o-mini-2024-07-18" \
+  --show-images
+```
+
+This renders each frame as colored blocks in your terminal, useful for debugging and visualizing the agent's progress in real-time.
+
 ### Programmatic Usage
 
 ```python
@@ -108,6 +121,7 @@ client.close_scorecard(card_id)
 | `--max_actions` | Max actions per game | 40 |
 | `--save_results_dir` | Results directory | `results/<config>` |
 | `--retry_attempts` | API retry attempts | 3 |
+| `--show-images` | Display frames in terminal | False |
 | `--verbose` | Enable verbose logging | False |
 
 ### Batch CLI (`arcagi3.cli`)

@@ -36,6 +36,7 @@ class ARC3Tester:
         retry_attempts: int = 3,
         api_retries: int = 3,
         num_plays: int = 1,
+        show_images: bool = False,
     ):
         """
         Initialize the tester.
@@ -48,6 +49,7 @@ class ARC3Tester:
             retry_attempts: Number of retry attempts for API failures
             api_retries: Number of retry attempts for ARC-AGI-3 API calls
             num_plays: Number of times to play the game (continues session with memory)
+            show_images: Whether to display game frames in the terminal
         """
         self.config = config
         self.model_config = read_models_config(config)
@@ -56,6 +58,7 @@ class ARC3Tester:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
+        self.show_images = show_images
         
         # Initialize game client
         self.game_client = GameClient(max_retries=api_retries)
@@ -92,6 +95,7 @@ class ARC3Tester:
                 max_actions=self.max_actions,
                 retry_attempts=self.retry_attempts,
                 num_plays=self.num_plays,
+                show_images=self.show_images,
             )
             
             # Play game
@@ -167,6 +171,11 @@ def main_cli(cli_args: Optional[list] = None):
         help="Number of times to play the game (continues session with memory on subsequent plays) (default: 1)"
     )
     parser.add_argument(
+        "--show-images",
+        action="store_true",
+        help="Display game frames in the terminal"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -222,6 +231,7 @@ def main_cli(cli_args: Optional[list] = None):
         retry_attempts=args.retry_attempts,
         api_retries=args.retries,
         num_plays=args.num_plays,
+        show_images=args.show_images,
     )
     
     # Play game
