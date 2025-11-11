@@ -644,6 +644,8 @@ No Actions So Far
     ) -> Dict[str, Any]:
         """Convert human action description to game action"""
         available_actions = [f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
+        
+        content = []
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use image
             content.append(
