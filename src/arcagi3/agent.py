@@ -154,18 +154,6 @@ def extract_json_from_response(response_text: str) -> Dict[str, Any]:
 class MultimodalAgent:
     """Agent that plays ARC-AGI-3 games using multimodal LLMs"""
     
-    # Providers that support multimodal/vision capabilities (can accept images)
-    MULTIMODAL_PROVIDERS = {
-        "openai",
-        "anthropic",
-        "gemini",
-        "fireworks",
-        "huggingfacefireworks",
-        "grok",
-        "openrouter",
-        "xai",
-    }
-    
     SYSTEM_PROMPT = dedent("""\
         You are an abstract reasoning agent that is attempting to solve
         turn-based interactive environments displayed to you as PNGs along
@@ -249,6 +237,7 @@ class MultimodalAgent:
         max_actions: int = 40,
         retry_attempts: int = 3,
         num_plays: int = 1,
+        use_vision: bool = True,
     ):
         """
         Initialize the multimodal agent.
@@ -267,9 +256,27 @@ class MultimodalAgent:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
-        
+
         # Initialize provider adapter
         self.provider = create_provider(config)
+        self._model_supports_vision = bool(getattr(self.provider.model_config, "is_multimodal", False))
+        self._use_vision = bool(use_vision and self._model_supports_vision)
+
+        if not self._model_supports_vision:
+            if use_vision:
+                logger.warning(
+                    "Model config `%s` does not support multimodal; continuing without vision.",
+                    self.config,
+                )
+            else:
+                logger.info(
+                    "Model config `%s` is text-only; vision disabled.",
+                    self.config,
+                )
+        elif self._use_vision:
+            logger.info("Vision is enabled for this agent. Images will be used.")
+        else:
+            logger.warning("Vision is disabled for this agent. Only text will be used.")
         
         # Tracking variables
         self.action_counter = 0
@@ -513,10 +520,7 @@ No Actions So Far
         
         analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{self._memory_prompt}"
         
-        # Check if provider supports multimodal/vision capabilities
-        is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
-        
-        if is_multimodal:
+        if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
             all_imgs = [
                 self._previous_images[-1],
@@ -592,10 +596,7 @@ No Actions So Far
         else:
             self._previous_prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         
-        # Check if provider supports multimodal/vision capabilities
-        is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
-        
-        if is_multimodal:
+        if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
             content = [
                 *[make_image_block(image_to_base64(img)) for img in frame_images],
@@ -642,12 +643,8 @@ No Actions So Far
         last_frame_grid: List[List[int]]
     ) -> Dict[str, Any]:
         """Convert human action description to game action"""
-        # Check if provider supports multimodal/vision capabilities
-        is_multimodal = self.provider.model_config.provider in self.MULTIMODAL_PROVIDERS
         available_actions = [f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
-        
-        content = []
-        if is_multimodal:
+        if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use image
             content.append(
                 make_image_block(image_to_base64(last_frame_image)),

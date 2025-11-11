@@ -70,6 +70,7 @@ async def run_single_game_wrapper(
     retry_attempts: int,
     api_retries: int,
     num_plays: int,
+    use_vision: bool,
 ) -> bool:
     def _synchronous_game_execution():
         tester = ARC3Tester(
@@ -80,6 +81,7 @@ async def run_single_game_wrapper(
             retry_attempts=retry_attempts,
             api_retries=api_retries,
             num_plays=num_plays,
+            use_vision=use_vision,
         )
         result = tester.play_game(game_id)
         if result:
@@ -106,6 +108,7 @@ async def main(
     retry_attempts: int,
     api_retries: int,
     num_plays: int,
+    use_vision: bool,
 ) -> int:
     start_time = time.perf_counter()
     timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -143,7 +146,7 @@ async def main(
             async_tasks_to_execute.append(
                 run_single_game_wrapper(
                     config_name, game_id, limiter, timestamp_dir,
-                    overwrite_results, max_actions, retry_attempts, api_retries, num_plays
+                    overwrite_results, max_actions, retry_attempts, api_retries, num_plays, use_vision
                 )
             )
         except Exception as e:
@@ -279,6 +282,11 @@ if __name__ == "__main__":
         help="Number of times to play each game (continues session with memory) (default: 1)",
     )
     parser.add_argument(
+        "--use_vision",
+        action="store_true",
+        help="Use vision to play the game (default: True)",
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -337,6 +345,7 @@ if __name__ == "__main__":
                 retry_attempts=args.retry_attempts,
                 api_retries=args.retries,
                 num_plays=args.num_plays,
+                use_vision=args.use_vision,
             )
         )
         sys.exit(exit_code)

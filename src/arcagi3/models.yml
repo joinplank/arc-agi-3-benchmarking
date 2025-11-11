@@ -8,6 +8,7 @@ models:
   - name: "gpt-5-pro-2025-10-06"
     model_name: "gpt-5-pro-2025-10-06"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     background: true
     reasoning:
@@ -21,6 +22,7 @@ models:
   - name: "gpt-5-2025-08-07-high"
     model_name: "gpt-5-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "high"
@@ -35,6 +37,7 @@ models:
   - name: "gpt-5-2025-08-07-medium"
     model_name: "gpt-5-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "medium"
@@ -48,6 +51,7 @@ models:
   - name: "gpt-5-2025-08-07-low"
     model_name: "gpt-5-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "low"
@@ -61,6 +65,7 @@ models:
   - name: "gpt-5-2025-08-07-minimal"
     model_name: "gpt-5-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "minimal"
@@ -74,6 +79,7 @@ models:
   - name: "gpt-5-mini-2025-08-07-high"
     model_name: "gpt-5-mini-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "high"
@@ -88,6 +94,7 @@ models:
   - name: "gpt-5-mini-2025-08-07-medium"
     model_name: "gpt-5-mini-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "medium"
@@ -102,6 +109,7 @@ models:
   - name: "gpt-5-mini-2025-08-07-low"
     model_name: "gpt-5-mini-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "low"
@@ -115,6 +123,7 @@ models:
   - name: "gpt-5-mini-2025-08-07-minimal"
     model_name: "gpt-5-mini-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "minimal"
@@ -128,6 +137,7 @@ models:
   - name: "gpt-5-nano-2025-08-07-high"
     model_name: "gpt-5-nano-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "high"
@@ -142,6 +152,7 @@ models:
   - name: "gpt-5-nano-2025-08-07-medium"
     model_name: "gpt-5-nano-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "medium"
@@ -156,6 +167,7 @@ models:
   - name: "gpt-5-nano-2025-08-07-low"
     model_name: "gpt-5-nano-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "low"
@@ -170,6 +182,7 @@ models:
   - name: "gpt-5-nano-2025-08-07-minimal"
     model_name: "gpt-5-nano-2025-08-07"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "minimal"
@@ -183,6 +196,7 @@ models:
   - name: "o3-pro-2025-06-10-high"
     model_name: "o3-pro-2025-06-10"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "high"
@@ -196,6 +210,7 @@ models:
   - name: "o3-pro-2025-06-10-medium"
     model_name: "o3-pro-2025-06-10"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "medium"
@@ -209,6 +224,7 @@ models:
   - name: "o3-pro-2025-06-10-low"
     model_name: "o3-pro-2025-06-10"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "low"
@@ -222,6 +238,7 @@ models:
   - name: "codex-mini-latest"
     model_name: "codex-mini-latest"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     max_completion_tokens: 100000
     pricing:
@@ -232,6 +249,7 @@ models:
   - name: "o3-2025-04-16-high"
     model_name: "o3-2025-04-16"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "high"
@@ -245,6 +263,7 @@ models:
   - name: "o3-2025-04-16-medium"
     model_name: "o3-2025-04-16"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "medium"
@@ -259,6 +278,7 @@ models:
   - name: "o3-2025-04-16-low-2025-06-10"
     model_name: "o3-2025-04-16"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "low"
@@ -273,6 +293,7 @@ models:
   - name: "o3-2025-04-16-low"
     model_name: "o3-2025-04-16"
     provider: "openai"
+    is_multimodal: true
     reasoning_effort: "low"
     max_completion_tokens: 100000
     pricing:
@@ -283,6 +304,7 @@ models:
   - name: "o4-mini-2025-04-16-high"
     model_name: "o4-mini-2025-04-16"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "high"
@@ -296,6 +318,7 @@ models:
   - name: "o4-mini-2025-04-16-medium"
     model_name: "o4-mini-2025-04-16"
     provider: "openai"
+    is_multimodal: true
     reasoning_effort: "medium"
     max_completion_tokens: 100000
     pricing:
@@ -306,6 +329,7 @@ models:
   - name: "o4-mini-2025-04-16-low"
     model_name: "o4-mini-2025-04-16"
     provider: "openai"
+    is_multimodal: true
     reasoning_effort: "low"
     max_completion_tokens: 100000
     pricing:
@@ -316,6 +340,7 @@ models:
   - name: "gpt-4-1-nano-2025-04-14"
     model_name: "gpt-4.1-nano-2025-04-14"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 10000
     pricing:
       date: "2025-04-14"
@@ -325,6 +350,7 @@ models:
   - name: "gpt-4-1-mini-2025-04-14"
     model_name: "gpt-4.1-mini-2025-04-14"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 10000
     pricing:
       date: "2025-04-14"
@@ -334,6 +360,7 @@ models:
   - name: "gpt-4-1-2025-04-14"
     model_name: "gpt-4.1-2025-04-14"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 10000
     pricing:
       date: "2025-04-14"
@@ -343,6 +370,7 @@ models:
   - name: "gpt-4o-2024-11-20"
     model_name: "gpt-4o-2024-11-20"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     max_completion_tokens: 8000
     stream: true
@@ -354,6 +382,7 @@ models:
   - name: "gpt-4o-2024-05-13"
     model_name: "gpt-4o-2024-05-13"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     max_completion_tokens: 4096
     pricing:
@@ -365,6 +394,7 @@ models:
   - name: "gpt-4o-mini-2024-07-18"
     model_name: "gpt-4o-mini-2024-07-18"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     max_completion_tokens: 8000
     pricing:
@@ -375,6 +405,7 @@ models:
   - name: "gpt-4-5-preview-2025-02-27"
     model_name: "gpt-4.5-preview-2025-02-27"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 10000
     pricing:
       date: "2025-03-15"
@@ -384,6 +415,7 @@ models:
   - name: "o3-mini-2025-01-31-high"
     model_name: "o3-mini-2025-01-31"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "high"
     pricing:
@@ -394,6 +426,7 @@ models:
   - name: "o3-mini-2025-01-31-medium"
     model_name: "o3-mini-2025-01-31"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "medium"
     pricing:
@@ -404,6 +437,7 @@ models:
   - name: "o3-mini-2025-01-31-low"
     model_name: "o3-mini-2025-01-31"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "low"
     pricing:
@@ -414,6 +448,7 @@ models:
   - name: "o1-2024-12-17-low"
     model_name: "o1-2024-12-17"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 75000
     reasoning_effort: "low"
     pricing:
@@ -424,6 +459,7 @@ models:
   - name: "o1-2024-12-17-medium"
     model_name: "o1-2024-12-17"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 75000
     reasoning_effort: "medium"
     pricing:
@@ -434,6 +470,7 @@ models:
   - name: "o1-2024-12-17-high"
     model_name: "o1-2024-12-17"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 75000
     reasoning_effort: "high"
     pricing:
@@ -444,6 +481,7 @@ models:
   - name: "o1-pro-2025-03-19-high"
     model_name: "o1-pro-2025-03-19"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "high"
@@ -458,6 +496,7 @@ models:
   - name: "o1-pro-2025-03-19-medium"
     model_name: "o1-pro-2025-03-19"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "medium"
@@ -472,6 +511,7 @@ models:
   - name: "o1-pro-2025-03-19-low"
     model_name: "o1-pro-2025-03-19"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     reasoning:
       effort: "low"
@@ -486,6 +526,7 @@ models:
   - name: "gpt4o_mini"
     model_name: "gpt-4o-mini"
     provider: "openai"
+    is_multimodal: true
     api_type: "responses"
     max_completion_tokens: 10000
     pricing:
@@ -496,6 +537,7 @@ models:
   - name: "gpt-4.5-2025-02-21-alpha"
     model_name: "gpt-4.5-2025-02-21-alpha"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 4024
     pricing:
       date: "2025-02-23"
@@ -505,6 +547,7 @@ models:
   - name: "o1-preview-2024-09-12"
     model_name: "o1-preview-2024-09-12"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 32768
     pricing:
       date: "2025-04-28"
@@ -514,6 +557,7 @@ models:
   - name: "o1-mini-2024-09-12"
     model_name: "o1-mini-2024-09-12"
     provider: "openai"
+    is_multimodal: true
     max_completion_tokens: 65536
     pricing:
       date: "2025-04-28"
@@ -527,6 +571,7 @@ models:
   - name: "grok-4-fast-reasoning"
     model_name: "grok-4-fast-reasoning"
     provider: "grok"
+    is_multimodal: true
     max_completion_tokens: 200000
     stream: true
     pricing:
@@ -537,6 +582,7 @@ models:
   - name: "grok-3-mini-beta"
     model_name: "grok-3-mini-beta"
     provider: "grok"
+    is_multimodal: true
     max_completion_tokens: 8192 # Assuming same context as grok-3-beta, adjust if needed
     pricing:
       date: "2025-04-28"
@@ -546,6 +592,7 @@ models:
   - name: "grok-3-mini-beta-high"
     model_name: "grok-3-mini-beta"
     provider: "grok"
+    is_multimodal: true
     max_completion_tokens: 100000 # Assuming same context as grok-3-beta, adjust if needed
     reasoning_effort: "high"
     pricing:
@@ -566,6 +613,7 @@ models:
   - name: "grok-3-openrouter"
     model_name: "x-ai/grok-beta"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 100000
     pricing:
       date: "2025-04-22"
@@ -575,6 +623,7 @@ models:
   - name: "grok-3-mini-beta-low-openrouter"
     model_name: "x-ai/grok-3-mini-beta"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 100000
     extra_body:
       reasoning:
@@ -587,6 +636,7 @@ models:
   - name: "grok-3-mini-beta-high-openrouter"
     model_name: "x-ai/grok-3-mini-beta"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 100000
     extra_body:
       reasoning:
@@ -603,6 +653,7 @@ models:
   - name: "claude-sonnet-4-5-20250929-thinking-32k"
     model_name: "claude-sonnet-4-5-20250929"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 64000
     stream: true
     thinking:
@@ -616,6 +667,7 @@ models:
   - name: "claude-sonnet-4-5-20250929-thinking-16k"
     model_name: "claude-sonnet-4-5-20250929"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 64000
     stream: true
     thinking:
@@ -629,6 +681,7 @@ models:
   - name: "claude-sonnet-4-5-20250929-thinking-8k"
     model_name: "claude-sonnet-4-5-20250929"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 64000
     stream: true
     thinking:
@@ -642,6 +695,7 @@ models:
   - name: "claude-sonnet-4-5-20250929-thinking-1k"
     model_name: "claude-sonnet-4-5-20250929"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 64000
     stream: true
     thinking:
@@ -655,6 +709,7 @@ models:
   - name: "claude-sonnet-4-5-20250929"
     model_name: "claude-sonnet-4-5-20250929"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 64000
     stream: true
     pricing:
@@ -665,6 +720,7 @@ models:
   - name: "claude-4-sonnet-20250522-thinking-8k-bedrock"
     model_name: "anthropic/claude-sonnet-4"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 32000
     extra_body:
       provider:
@@ -680,6 +736,7 @@ models:
   - name: "claude-3-7-sonnet-20250219"
     model_name: "claude-3-7-sonnet-20250219"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 8192
     pricing:
       date: "2025-03-12"
@@ -689,6 +746,7 @@ models:
   - name: "claude-3-7-sonnet-20250219-thinking-1k"
     model_name: "claude-3-7-sonnet-20250219"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 20000
     thinking:
       type: "enabled"
@@ -701,6 +759,7 @@ models:
   - name: "claude-3-7-sonnet-20250219-thinking-8k"
     model_name: "claude-3-7-sonnet-20250219"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 20000
     thinking:
       type: "enabled"
@@ -713,6 +772,7 @@ models:
   - name: "claude-3-7-sonnet-20250219-thinking-16k"
     model_name: "claude-3-7-sonnet-20250219"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 21000
     thinking:
       type: "enabled"
@@ -725,6 +785,7 @@ models:
   - name: "claude-3-5-sonnet-20241022"
     model_name: "claude-3-5-sonnet-20241022"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 4024
     temperature: 0.0
     pricing:
@@ -735,6 +796,7 @@ models:
   - name: "claude_haiku"
     model_name: "claude-3-5-haiku-latest"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 4024
     temperature: 0.0
     pricing:
@@ -745,6 +807,7 @@ models:
   - name: "claude_opus"
     model_name: "claude-3-opus-latest"
     provider: "anthropic"
+    is_multimodal: true
     max_tokens: 4024
     temperature: 0.0
     pricing:
@@ -760,6 +823,7 @@ models:
   - name: "gemini-2-5-flash-preview-05-20"
     model_name: "gemini-2.5-flash-preview-05-20"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 65536
     automatic_function_calling:
       disable: true
@@ -771,6 +835,7 @@ models:
   - name: "gemini-2-5-flash-preview-05-20-thinking-1k"
     model_name: "gemini-2.5-flash-preview-05-20"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 65536
     thinking_config:
       thinking_budget: 1024
@@ -784,6 +849,7 @@ models:
   - name: "gemini-2-5-flash-preview-05-20-thinking-8k"
     model_name: "gemini-2.5-flash-preview-05-20"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 65536
     thinking_config:
       thinking_budget: 8000
@@ -797,6 +863,7 @@ models:
   - name: "gemini-2-5-flash-preview-05-20-thinking-16k"
     model_name: "gemini-2.5-flash-preview-05-20"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 65536
     thinking_config:
       thinking_budget: 16000
@@ -810,6 +877,7 @@ models:
   - name: "gemini-2-5-flash-preview-05-20-thinking-24k"
     model_name: "gemini-2.5-flash-preview-05-20"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 65536
     thinking_config:
       thinking_budget: 24576
@@ -823,6 +891,7 @@ models:
   - name: "gemini-2-0-flash-001"
     model_name: "gemini-2.0-flash-001"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 4024
     pricing:
       date: "2025-02-23"
@@ -832,6 +901,7 @@ models:
   - name: "gemini-1-5-pro-002"
     model_name: "gemini-1.5-pro-002"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 4024
     pricing:
       date: "2025-02-23"
@@ -841,6 +911,7 @@ models:
   - name: "gemini-2.5-pro-exp-03-25"
     model_name: "gemini-2.5-pro-exp-03-25"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 200000
     pricing:
       date: "2025-03-25"
@@ -850,6 +921,7 @@ models:
   - name: "gemini-2-5-pro-preview-05-06"
     model_name: "gemini-2.5-pro-preview-05-06"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 65535
     pricing:
       date: "2025-05-29"
@@ -859,6 +931,7 @@ models:
   - name: "gemini-2-5-pro-preview-05-06-thinking-1k"
     model_name: "gemini-2.5-pro-preview-05-06"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 65535
     thinking_config:
       thinking_budget: 1000
@@ -872,6 +945,7 @@ models:
   - name: "gemini-2-5-pro-preview-05-06-thinking-8k"
     model_name: "gemini-2.5-pro-preview-05-06"
     provider: "gemini"
+    is_multimodal: true
     max_output_tokens: 65535
     thinking_config:
       thinking_budget: 8000
@@ -886,6 +960,7 @@ models:
   - name: "gemini-2-5-pro-preview-openrouter"
     model_name: "google/gemini-2.5-pro-preview"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 65535
     pricing:
       date: "2025-05-29"
@@ -895,6 +970,7 @@ models:
   - name: "gemini-2-5-pro-preview-openrouter-thinking-1k"
     model_name: "google/gemini-2.5-pro-preview"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 65535
     extra_body:
       provider:
@@ -914,6 +990,7 @@ models:
   - name: "magistral-small-2506"
     model_name: "mistralai/magistral-small-2506"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 32000 # Max is 40,000. Leaving cushion for prompt
     pricing:
       date: "2025-06-12"
@@ -923,6 +1000,7 @@ models:
   - name: "magistral-medium-2506"
     model_name: "mistralai/magistral-medium-2506"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 32000 # Max is 40,000. Leaving cushion for prompt
     pricing:
       date: "2025-06-12"
@@ -932,6 +1010,7 @@ models:
   - name: "magistral-medium-2506-thinking"
     model_name: "mistralai/magistral-medium-2506:thinking"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 32000 # Max is 40,000. Leaving cushion for prompt
     pricing:
       date: "2025-06-12"
@@ -964,6 +1043,7 @@ models:
   - name: "deepseek_r1_0528-openrouter"
     model_name: "deepseek/deepseek-r1-0528"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 130000 # Max is 163,840, leaving lots of room for prompt
     pricing:
       date: "2025-05-28"
@@ -977,6 +1057,7 @@ models:
   - name: "QwQ-32B"
     model_name: "Qwen/QwQ-32B"
     provider: "huggingfacefireworks"
+    is_multimodal: true
     max_tokens: 32768 # From HF example
     pricing:
       date: "2025-03-05"
@@ -986,6 +1067,7 @@ models:
   - name: "QwQ-32B-Fireworks"
     model_name: "accounts/fireworks/models/qwq-32b"
     provider: "fireworks"
+    is_multimodal: true
     max_tokens: 32768 # From HF example
     pricing:
       date: "2025-03-05"
@@ -999,6 +1081,7 @@ models:
   - name: "deepseek-r1-fireworks"
     model_name: "accounts/fireworks/models/deepseek-r1"
     provider: "fireworks"
+    is_multimodal: true
     max_tokens: 32768 # From HF example
     pricing:
       date: "2025-03-05"
@@ -1008,6 +1091,7 @@ models:
   - name: "deepseek-v3-20250324-fireworks"
     model_name: "accounts/fireworks/models/deepseek-v3-0324"
     provider: "fireworks"
+    is_multimodal: true
     max_tokens: 32768 # From HF example
     pricing:
       date: "2025-03-24"
@@ -1021,6 +1105,7 @@ models:
   - name: "grok-4-0709"
     model_name: "grok-4-0709"
     provider: "xai"
+    is_multimodal: true
     max_completion_tokens: 128000
     temperature: 0.7
     top_p: 1.0
@@ -1033,6 +1118,7 @@ models:
   - name: "grok-3-mini-xai-high"
     model_name: "grok-3-mini"
     provider: "xai"
+    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "high"
     temperature: 0.7
@@ -1050,6 +1136,7 @@ models:
   - name: "qwen3-235b-a22b-07-25"
     model_name: "qwen/qwen3-235b-a22b-07-25"
     provider: "openrouter"
+    is_multimodal: true
     max_tokens: 100000
     pricing:
       date: "2025-07-21"
@@ -1059,6 +1146,7 @@ models:
   - name: "qwen3-235b-a22b-instruct-2507"
     model_name: "accounts/fireworks/models/qwen3-235b-a22b-instruct-2507"
     provider: "fireworks"
+    is_multimodal: true
     max_tokens: 100000
     pricing:
       date: "2025-07-21"
