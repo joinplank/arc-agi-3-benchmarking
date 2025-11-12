@@ -94,9 +94,9 @@ def run_batch_games(
             hint_found = game_id in hints
         
         if hint_found:
-            print(f"✓ Hint found for game {game_id}")
+            logger.info(f"✓ Hint found for game {game_id}")
         else:
-            print(f"⊘ No hint found for game {game_id}")
+            logger.debug(f"⊘ No hint found for game {game_id}")
         
         try:
             result = tester.play_game(game_id)
@@ -233,14 +233,14 @@ def main_cli(cli_args: Optional[list] = None):
     if args.list_games:
         games = list_available_games(game_client)
         if games:
-            print("\nAvailable Games:")
-            print("=" * 60)
+            logger.info("\nAvailable Games:")
+            logger.info("=" * 60)
             for game in games:
-                print(f"  {game['game_id']:<30} {game['title']}")
-            print("=" * 60)
-            print(f"Total: {len(games)} games\n")
+                logger.info(f"  {game['game_id']:<30} {game['title']}")
+            logger.info("=" * 60)
+            logger.info(f"Total: {len(games)} games\n")
         else:
-            print("No games available or failed to fetch games.")
+            logger.warning("No games available or failed to fetch games.")
         return
     
     # Require config for running games

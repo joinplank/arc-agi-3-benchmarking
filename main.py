@@ -94,9 +94,9 @@ class ARC3Tester:
                 hint_found = game_id in hints
             
             if hint_found:
-                print(f"✓ Hint found for game {game_id}")
+                logger.info(f"✓ Hint found for game {game_id}")
             else:
-                print(f"⊘ No hint found for game {game_id}")
+                logger.debug(f"⊘ No hint found for game {game_id}")
             
             # Create agent
             agent = MultimodalAgent(
@@ -249,17 +249,17 @@ def main_cli(cli_args: Optional[list] = None):
     result = tester.play_game(args.game_id)
     
     if result:
-        print(f"\n{'='*60}")
-        print(f"Game Result: {result.game_id}")
-        print(f"{'='*60}")
-        print(f"Final Score: {result.final_score}")
-        print(f"Final State: {result.final_state}")
-        print(f"Actions Taken: {result.actions_taken}")
-        print(f"Duration: {result.duration_seconds:.2f}s")
-        print(f"Total Cost: ${result.total_cost.total_cost:.4f}")
-        print(f"Total Tokens: {result.usage.total_tokens}")
-        print(f"\nView your scorecard online: {result.scorecard_url}")
-        print(f"{'='*60}\n")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Game Result: {result.game_id}")
+        logger.info(f"{'='*60}")
+        logger.info(f"Final Score: {result.final_score}")
+        logger.info(f"Final State: {result.final_state}")
+        logger.info(f"Actions Taken: {result.actions_taken}")
+        logger.info(f"Duration: {result.duration_seconds:.2f}s")
+        logger.info(f"Total Cost: ${result.total_cost.total_cost:.4f}")
+        logger.info(f"Total Tokens: {result.usage.total_tokens}")
+        logger.info(f"\nView your scorecard online: {result.scorecard_url}")
+        logger.info(f"{'='*60}\n")
     
 
 if __name__ == "__main__":

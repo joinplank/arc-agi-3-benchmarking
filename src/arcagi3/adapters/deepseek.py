@@ -119,7 +119,7 @@ The JSON should be in this format:
             # Use inherited _get_content
             assistant_content = self._get_content(completion)
         except Exception as e:
-             print(f"Error during AI-based JSON extraction via Deepseek: {e}")
+             logger.error(f"Error during AI-based JSON extraction via Deepseek: {e}")
              # Fallback: Try to parse the original input_response directly if AI fails
              assistant_content = input_response
 

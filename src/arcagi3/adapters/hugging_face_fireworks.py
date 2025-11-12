@@ -99,7 +99,7 @@ class HuggingFaceFireworksAdapter(ProviderAdapter):
             test_id=test_id
         )
 
-        print(f"Response (response.choices[0].message): {response.choices[0].message.content.strip()}")
+        logger.debug(f"Response (response.choices[0].message): {response.choices[0].message.content.strip()}")
         attempt = Attempt(
             metadata=metadata,
             answer=response.choices[0].message.content.strip()
