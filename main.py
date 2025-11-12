@@ -36,6 +36,7 @@ class ARC3Tester:
         retry_attempts: int = 3,
         api_retries: int = 3,
         num_plays: int = 1,
+        use_vision: bool = True,
     ):
         """
         Initialize the tester.
@@ -56,7 +57,7 @@ class ARC3Tester:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
-        
+        self.use_vision = use_vision
         # Initialize game client
         self.game_client = GameClient(max_retries=api_retries)
         
@@ -105,6 +106,7 @@ class ARC3Tester:
                 max_actions=self.max_actions,
                 retry_attempts=self.retry_attempts,
                 num_plays=self.num_plays,
+                use_vision=self.use_vision,
             )
             
             # Play game
@@ -160,6 +162,11 @@ def main_cli(cli_args: Optional[list] = None):
         type=int,
         default=40,
         help="Maximum actions per game (default: 40)"
+    )
+    parser.add_argument(
+        "--use_vision",
+        action="store_true",
+        help="Use vision to play the game (default: True)"
     )
     parser.add_argument(
         "--retry_attempts",
@@ -235,6 +242,7 @@ def main_cli(cli_args: Optional[list] = None):
         retry_attempts=args.retry_attempts,
         api_retries=args.retries,
         num_plays=args.num_plays,
+        use_vision=args.use_vision,
     )
     
     # Play game
