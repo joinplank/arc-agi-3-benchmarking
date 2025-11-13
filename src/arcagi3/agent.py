@@ -301,7 +301,9 @@ class MultimodalAgent:
         self._previous_images: List[Image.Image] = []
         self._previous_grids: List[List[List[int]]] = []  # Store raw grids for text-based providers
         self._previous_score = 0
-    
+
+        self._previous_prompt = ""
+
     def _get_system_prompt(self) -> str:
         """
         Get the system prompt, prepending any hint for the current game if available.
@@ -325,7 +327,8 @@ class MultimodalAgent:
         human_actions = "\n".join(available_actions)
         self._memory_prompt = dedent(f"""\
             ## Known Human Game Inputs
-            {human_actions}                
+{human_actions}
+
 ## Current Goal
 Use the known human game input to interact with the game environment and learn the rules of the game.
                             
@@ -578,7 +581,7 @@ No Actions So Far
             {"role": "system", "content": self._get_system_prompt()},
             {
                 "role": "user",
-                "content": [{"type": "text", "text": str(self._previous_action)}],
+                "content": [{"type": "text", "text": self._previous_prompt}],
             },
             {
                 "role": "assistant",
@@ -613,15 +616,14 @@ No Actions So Far
     ) -> Dict[str, Any]:
         """Choose the next human-level action"""
         if len(analysis) > 20:
-            prompt = f"{analysis}\n\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            self._previous_prompt = f"{analysis}\n\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         else:
-            prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            self._previous_prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
             content = [
                 *[make_image_block(image_to_base64(img)) for img in frame_images],
-                {"type": "text", "text": prompt},
             ]
         else:
             # For text-only providers, use text matrices
@@ -631,7 +633,7 @@ No Actions So Far
                     "type": "text",
                     "text": f"Frame {i}:\n{grid_to_text_matrix(grid)}"
                 })
-            content.append({"type": "text", "text": prompt})
+        content.append({"type": "text", "text": self._previous_prompt})
         
         messages = [
             {"role": "system", "content": self._get_system_prompt()},
@@ -666,19 +668,21 @@ No Actions So Far
     ) -> Dict[str, Any]:
         """Convert human action description to game action"""
         available_actions = [f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
+        
+        content = []
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use image
-            content = [
+            content.append(
                 make_image_block(image_to_base64(last_frame_image)),
-            ]
+            )
         else:
             # For text-only providers, use text matrix
-            content = [
+            content.append(
                 {
                     "type": "text",
                     "text": f"Current frame:\n{grid_to_text_matrix(last_frame_grid)}"
                 },
-            ]
+            )
         content.append({
             "type": "text",
             "text": human_action + "\n\n" + self.FIND_ACTION_INSTRUCT.replace("{{action_list}}", "\n".join(available_actions)),
