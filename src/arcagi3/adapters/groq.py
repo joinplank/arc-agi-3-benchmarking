@@ -35,7 +35,7 @@ class GroqAdapter(OpenAIBaseAdapter): # Inherit from OpenAIBaseAdapter
         start_time = datetime.now(timezone.utc)
         
         response = self._call_ai_model(prompt)
-        print (f"Response: {response}")
+        logger.debug(f"Response: {response}")
         
         end_time = datetime.now(timezone.utc)
 
@@ -83,7 +83,7 @@ class GroqAdapter(OpenAIBaseAdapter): # Inherit from OpenAIBaseAdapter
             answer=self._get_content(response)
         )
 
-        print (f"Attempt: {attempt}")
+        logger.debug(f"Attempt: {attempt}")
         return attempt
 
     def extract_json_from_response(self, input_response: str) -> list[list[int]] | None:
@@ -105,7 +105,7 @@ IMPORTANT: Return ONLY the array, with no additional text, quotes, or formatting
             completion = self._call_ai_model(prompt=prompt) 
             assistant_content = self._get_content(completion) 
         except Exception as e:
-            print(f"Error during AI-based JSON extraction via Groq: {e}")
+            logger.error(f"Error during AI-based JSON extraction via Groq: {e}")
             assistant_content = input_response
         
         assistant_content = assistant_content.strip()

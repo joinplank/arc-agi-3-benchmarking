@@ -9,6 +9,8 @@ from .task_utils import (
     generate_execution_map,
     generate_summary,
     generate_scorecard_tags,
+    load_hints,
+    find_hints_file,
 )
 from .retry import retry_with_exponential_backoff, retry_on_rate_limit, RetryConfig
 from .rate_limiter import AsyncRequestRateLimiter
@@ -22,6 +24,8 @@ __all__ = [
     "generate_execution_map",
     "generate_summary",
     "generate_scorecard_tags",
+    "load_hints",
+    "find_hints_file",
     "retry_with_exponential_backoff",
     "retry_on_rate_limit",
     "RetryConfig",

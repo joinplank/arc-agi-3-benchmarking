@@ -103,7 +103,7 @@ IMPORTANT: Return ONLY the array, with no additional text, quotes, or formatting
             completion = self._call_ai_model(prompt=prompt) 
             assistant_content = self._get_content(completion) 
         except Exception as e:
-            print(f"Error during AI-based JSON extraction via Fireworks: {e}")
+            logger.error(f"Error during AI-based JSON extraction via Fireworks: {e}")
             assistant_content = input_response
         
         assistant_content = assistant_content.strip()

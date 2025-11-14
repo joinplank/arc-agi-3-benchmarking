@@ -4,6 +4,57 @@ from typing import Optional, Dict, List, Any
 import json
 import yaml
 from datetime import datetime
+from pathlib import Path
+
+
+def find_hints_file() -> Optional[str]:
+    """Find hints.yml file in current working directory or project root."""
+    cwd = Path.cwd()
+    project_root = Path(__file__).parent.parent.parent.parent
+    
+    for search_dir in [cwd, project_root]:
+        potential_file = search_dir / "hints.yml"
+        if potential_file.exists():
+            return str(potential_file)
+    return None
+
+
+def load_hints(hints_file: Optional[str] = None, game_id: Optional[str] = None) -> Dict[str, str]:
+    """
+    Load hints from a YAML file.
+    
+    The file should contain a mapping of game_id to hint text (markdown string).
+    
+    Args:
+        hints_file: Path to hints YAML file. If None, returns empty dict.
+        game_id: Optional specific game_id to load hint for. If provided, only returns hint for that game.
+        
+    Returns:
+        Dictionary mapping game_id to hint text (or single entry if game_id specified)
+        
+    Example YAML format:
+        ls20-fa137e247ce6: |
+            This is a hint for game ls20-fa137e247ce6.
+            You should look for patterns in the grid.
+        
+        ft09-16726c5b26ff: |
+            Another hint for a different game.
+    """
+    if not hints_file or not os.path.exists(hints_file):
+        return {}
+    
+    with open(hints_file, 'r') as f:
+        hints_data = yaml.safe_load(f)
+    
+    if not isinstance(hints_data, dict):
+        raise ValueError(f"Hints file must contain a dictionary/mapping. Got {type(hints_data)}")
+    
+    if game_id:
+        if game_id in hints_data:
+            return {game_id: str(hints_data[game_id])}
+        return {}
+    
+    return {game_id: str(hint) for game_id, hint in hints_data.items()}
 
 
 def generate_scorecard_tags(model_config: ModelConfig) -> List[str]:

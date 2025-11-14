@@ -27,6 +27,7 @@ from .schemas import (
     CompletionTokensDetails,
 )
 from .utils.retry import retry_with_exponential_backoff
+from .utils import load_hints, find_hints_file
 
 
 logger = logging.getLogger(__name__)
@@ -256,7 +257,11 @@ class MultimodalAgent:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
-
+        
+        self.hints_file = find_hints_file()
+        self.current_game_id: Optional[str] = None
+        self.current_hint: Optional[str] = None
+        
         # Initialize provider adapter
         self.provider = create_provider(config)
         self._model_supports_vision = bool(getattr(self.provider.model_config, "is_multimodal", False))
@@ -296,7 +301,26 @@ class MultimodalAgent:
         self._previous_images: List[Image.Image] = []
         self._previous_grids: List[List[List[int]]] = []  # Store raw grids for text-based providers
         self._previous_score = 0
+
         self._previous_prompt = ""
+
+    def _get_system_prompt(self) -> str:
+        """
+        Get the system prompt, prepending any hint for the current game if available.
+        
+        Returns:
+            System prompt with hint prepended if available
+        """
+        system_prompt = self.SYSTEM_PROMPT
+        
+        # Prepend hint if available for current game
+        if self.current_hint:
+            hint = self.current_hint.strip()
+            if hint:
+                system_prompt = f"{system_prompt}\n\n ALSO USE these hints in order to complete the game: \n {hint} "
+                logger.info(f"Using hint for game {self.current_game_id}")
+        
+        return system_prompt
         
     def _initialize_memory(self, available_actions: List[str]):
         """Initialize the agent's memory with game info"""
@@ -554,7 +578,7 @@ No Actions So Far
             msg_parts.append({"type": "text", "text": analyze_prompt})
         
         messages = [
-            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "system", "content": self._get_system_prompt()},
             {
                 "role": "user",
                 "content": [{"type": "text", "text": self._previous_prompt}],
@@ -612,7 +636,7 @@ No Actions So Far
         content.append({"type": "text", "text": self._previous_prompt})
         
         messages = [
-            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "system", "content": self._get_system_prompt()},
             {
                 "role": "user",
                 "content": content,
@@ -665,7 +689,7 @@ No Actions So Far
         })
         
         messages = [
-            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "system", "content": self._get_system_prompt()},
             {
                 "role": "user",
                 "content": content,
@@ -719,6 +743,18 @@ No Actions So Far
         """
         logger.info(f"Starting game {game_id} with config {self.config} ({self.num_plays} play(s))")
         overall_start_time = time.time()
+        
+        # Set current game ID and load hint for this specific game if available
+        self.current_game_id = game_id
+        if self.hints_file:
+            hints = load_hints(self.hints_file, game_id=game_id)
+            self.current_hint = hints.get(game_id) if hints else None
+            if self.current_hint:
+                logger.info(f"Found hint for game {game_id}")
+            else:
+                logger.debug(f"No hint found for game {game_id}")
+        else:
+            self.current_hint = None
         
         best_result: Optional[GameResult] = None
         guid: Optional[str] = None
