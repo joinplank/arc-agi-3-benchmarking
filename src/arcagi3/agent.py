@@ -201,16 +201,14 @@ class MultimodalAgent:
         When examining the images try to identify objects or environmental patterns
         and their locations.
                               
-        Provide your analysis and then after providing `---` update the following
-        information as you see fit while leaving the structure intact, including what
-        you've tried or would like to try in the future.  Note the "Known Human Game
-        Inputs" should never be changed as these are provided by the game itself. When
-        building the Action Long indicating what input was tried and the outcome 
-        you should be as specific as possible, while also indicating how confident you
-        are in that assertion while keeping in mind that certain actions might currently
-        be blocked before of the game environment.  All of this information should be used
-        to understand the game environment and rules in an attempt to beat the game in
-        as few moves as possible.        
+        Provide your analysis and then after providing `---` update your memory scratchpad.
+        The memory scratchpad is a place for you to remember anything that will help you
+        play the game better. You can structure it however you want - it's your scratchpad
+        to use as you see fit. IMPORTANT: The memory scratchpad should be plain text.
+        Use natural language, bullet points, or any text format you prefer. Keep the memory 
+        scratchpad concise and within approximately 500 words to help manage context window size. 
+        Focus on what's most important for understanding the game environment and rules to beat 
+        the game in as few moves as possible.
         ---
     """).strip()
     
@@ -238,6 +236,7 @@ class MultimodalAgent:
         retry_attempts: int = 3,
         num_plays: int = 1,
         use_vision: bool = True,
+        memory_word_limit: int = 500,
     ):
         """
         Initialize the multimodal agent.
@@ -249,6 +248,7 @@ class MultimodalAgent:
             max_actions: Maximum actions to take before stopping
             retry_attempts: Number of retry attempts for failed API calls
             num_plays: Number of times to play the game (continues session with memory)
+            memory_word_limit: Maximum number of words allowed in memory scratchpad (default: 500)
         """
         self.config = config
         self.game_client = game_client
@@ -256,6 +256,7 @@ class MultimodalAgent:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
+        self.memory_word_limit = memory_word_limit
 
         # Initialize provider adapter
         self.provider = create_provider(config)
@@ -299,21 +300,80 @@ class MultimodalAgent:
         self._previous_prompt = ""
         
     def _initialize_memory(self, available_actions: List[str]):
-        """Initialize the agent's memory with game info"""
-        human_actions = "\n".join(available_actions)
-        self._memory_prompt = dedent(f"""\
-            ## Known Human Game Inputs
-{human_actions}
-
-## Current Goal
-Use the known human game input to interact with the game environment and learn the rules of the game.
-                            
-## Game Rules
-Nothing is known currently other than this is a turn based game that I need to solve.
-                            
-## Action Log
-No Actions So Far
+        """Initialize the agent's memory as a simple scratchpad"""
+        # Memory is now just a scratchpad - LLM can structure it however it wants
+        self._memory_prompt = ""
+        logger.info(f"Memory initialized (empty scratchpad)")
+    
+    def _get_memory_word_count(self) -> int:
+        """Get the word count of the current memory"""
+        return len(self._memory_prompt.split(" ")) if self._memory_prompt else 0
+    
+    def _compress_memory(self) -> str:
+        """Ask LLM to compress memory if it exceeds the limit"""
+        if not self._memory_prompt:
+            return ""
+        
+        current_word_count = self._get_memory_word_count()
+        compress_prompt = dedent(f"""\
+            Your memory scratchpad has grown too large ({current_word_count} words).
+            Please compress it to approximately {self.memory_word_limit} words while keeping
+            the most important information for playing the game.
+            
+            Current memory:
+            {self._memory_prompt}
+            
+            Provide only the compressed memory scratchpad, nothing else.
         """).strip()
+        
+        messages = [
+            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": compress_prompt,
+            },
+        ]
+        
+        try:
+            response = self._call_provider(messages)
+            prompt_tokens, completion_tokens = self._extract_usage(response)
+            self._update_costs(prompt_tokens, completion_tokens)
+            
+            compressed = self._extract_content(response).strip()
+            compressed_word_count = len(compressed.split(" ")) if compressed else 0
+            logger.info(f"Compressed memory from {current_word_count} to {compressed_word_count} words")
+            return compressed
+        except Exception as e:
+            logger.error(f"Failed to compress memory: {e}")
+            # Fallback to truncation
+            return self._truncate_memory()
+    
+    def _truncate_memory(self) -> str:
+        """Truncate memory to word limit by keeping the first N words"""
+        if not self._memory_prompt:
+            return ""
+        
+        words = self._memory_prompt.split(" ")
+        if len(words) <= self.memory_word_limit:
+            return self._memory_prompt
+        
+        truncated = " ".join(words[:self.memory_word_limit])
+        logger.warning(f"Truncated memory from {len(words)} to {self.memory_word_limit} words")
+        return truncated
+    
+    def _enforce_memory_limit(self):
+        """Check memory size and compress or truncate if it exceeds the limit"""
+        word_count = self._get_memory_word_count()
+        if word_count <= self.memory_word_limit:
+            return
+        
+        logger.info(f"Memory exceeds limit ({word_count} > {self.memory_word_limit} words). Attempting compression...")
+        # Try compression first, fallback to truncation if it fails
+        self._memory_prompt = self._compress_memory()
+        
+        # If compression didn't work or still exceeds limit, truncate
+        if self._get_memory_word_count() > self.memory_word_limit:
+            self._memory_prompt = self._truncate_memory()
     
     def _extract_usage(self, response: Any) -> tuple[int, int]:
         """Extract token usage from provider response"""
@@ -518,7 +578,14 @@ No Actions So Far
         if current_score > self._previous_score:
             level_complete = "NEW LEVEL!!!! - Whatever you did must have been good!"
         
-        analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{self._memory_prompt}"
+        # Format available actions for the prompt
+        available_actions_text = "\n".join([
+            f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}"
+            for a in self._available_actions
+        ])
+        available_actions_section = f"Available Actions:\n{available_actions_text}\n"
+        
+        analyze_prompt = f"{level_complete}\n\n{available_actions_section}\n{self.ANALYZE_INSTRUCT}\n\n{self._memory_prompt}"
         
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
@@ -582,6 +649,14 @@ No Actions So Far
         analysis = before.strip()
         if after.strip():
             self._memory_prompt = after.strip()
+            word_count = self._get_memory_word_count()
+            logger.info(f"Memory updated ({word_count} words):\n{self._memory_prompt}")
+            # Enforce memory word limit
+            self._enforce_memory_limit()
+            # Log memory again after enforcement (in case it was compressed/truncated)
+            final_word_count = self._get_memory_word_count()
+            if final_word_count != word_count:
+                logger.info(f"Memory after enforcement ({final_word_count} words):\n{self._memory_prompt}")
         return analysis
     
     def _choose_human_action(
@@ -591,10 +666,17 @@ No Actions So Far
         analysis: str
     ) -> Dict[str, Any]:
         """Choose the next human-level action"""
+        # Format available actions for the prompt
+        available_actions_text = "\n".join([
+            f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}"
+            for a in self._available_actions
+        ])
+        available_actions_section = f"Available Actions:\n{available_actions_text}\n"
+        
         if len(analysis) > 20:
-            self._previous_prompt = f"{analysis}\n\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            self._previous_prompt = f"{analysis}\n\n{available_actions_section}\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         else:
-            self._previous_prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            self._previous_prompt = f"{available_actions_section}\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
