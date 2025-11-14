@@ -300,10 +300,14 @@ class MultimodalAgent:
         self._previous_prompt = ""
         
     def _initialize_memory(self, available_actions: List[str]):
-        """Initialize the agent's memory as a simple scratchpad"""
+        """Initialize the agent's memory as a simple scratchpad, only containing the available actions"""
         # Memory is now just a scratchpad - LLM can structure it however it wants
-        self._memory_prompt = ""
-        logger.info(f"Memory initialized (empty scratchpad)")
+        human_actions = "\n".join(available_actions)
+        self._memory_prompt = dedent(f"""\
+            ## Known Human Game Inputs
+{human_actions}
+        """).strip()
+        logger.info(f"Memory initialized with available actions")
     
     def _get_memory_word_count(self) -> int:
         """Get the word count of the current memory"""
@@ -578,14 +582,7 @@ class MultimodalAgent:
         if current_score > self._previous_score:
             level_complete = "NEW LEVEL!!!! - Whatever you did must have been good!"
         
-        # Format available actions for the prompt
-        available_actions_text = "\n".join([
-            f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}"
-            for a in self._available_actions
-        ])
-        available_actions_section = f"Available Actions:\n{available_actions_text}\n"
-        
-        analyze_prompt = f"{level_complete}\n\n{available_actions_section}\n{self.ANALYZE_INSTRUCT}\n\n{self._memory_prompt}"
+        analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{self._memory_prompt}"
         
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
@@ -666,17 +663,10 @@ class MultimodalAgent:
         analysis: str
     ) -> Dict[str, Any]:
         """Choose the next human-level action"""
-        # Format available actions for the prompt
-        available_actions_text = "\n".join([
-            f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}"
-            for a in self._available_actions
-        ])
-        available_actions_section = f"Available Actions:\n{available_actions_text}\n"
-        
         if len(analysis) > 20:
-            self._previous_prompt = f"{analysis}\n\n{available_actions_section}\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            self._previous_prompt = f"{analysis}\n\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         else:
-            self._previous_prompt = f"{available_actions_section}\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            self._previous_prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
         
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
