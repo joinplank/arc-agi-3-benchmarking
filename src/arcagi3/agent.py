@@ -753,36 +753,69 @@ class MultimodalAgent:
             if play_num > 1:
                 logger.info(f"Starting play {play_num}/{self.num_plays} (continuing session with memory)")
             
+            # Track if we successfully restored session from checkpoint
+            session_restored = False
+            
             # Reset game (use guid to continue session if not first play)
             # Skip reset if resuming from checkpoint in the middle of a play
             if resume_from_checkpoint and play_num == start_play and self._play_action_counter > 0:
                 logger.info(f"Resuming play {play_num} at action {self._play_action_counter}")
-                # Try to continue from existing session with guid
-                # If that fails (e.g., scorecard expired), reset with memory intact
-                session_restored = False
+                # Continue from existing session with guid - DO NOT reset
+                # Use the saved GUID to continue the game session without resetting
                 
-                # Try to use the saved GUID directly - let the server validate it
+                # Try to use the saved GUID directly - continue session without resetting
                 if self._current_guid:
                     try:
                         guid = self._current_guid
-                        logger.info(f"Attempting to continue session with guid: {guid}")
-                        state = self.game_client.reset_game(self.card_id, game_id, guid=guid)
+                        logger.info(f"Continuing session with guid: {guid} (NOT resetting)")
                         
-                        # Verify the guid matches (server should return same guid if session is valid)
-                        returned_guid = state.get("guid")
-                        if returned_guid == guid:
-                            current_score = state.get("score", self._previous_score)
-                            current_state = state.get("state", "IN_PROGRESS")
-                            session_restored = True
-                            logger.info(f"Successfully restored game session (guid: {guid}, score: {current_score})")
+                        # When resuming, we need the current state but can't call reset_game
+                        # because that resets the game. Instead, we'll use the previous state
+                        # from checkpoint and construct a minimal state object.
+                        # The next action will get us the current frames and state.
+                        current_score = self._previous_score
+                        current_state = "IN_PROGRESS"  # Assume still in progress
+                        session_restored = True
+                        
+                        # When resuming, we need current frames but can't call reset_game
+                        # because that resets the game. We'll use previous frames from checkpoint
+                        # temporarily, and the first action will get us the current state.
+                        # However, we can't directly get current state without an action.
+                        # Solution: Use previous_images temporarily for initial state,
+                        # OR better: Execute the next action immediately to get current state.
+                        # But we need frames NOW to analyze. So we'll use previous_images
+                        # converted back to frames for the initial state.
+                        if self._previous_images and len(self._previous_images) > 0:
+                            # We have previous images, but we need current frames
+                            # The challenge: we need current state but RESET resets the game
+                            # For now, we'll skip the initial state check and let the first
+                            # action get the current state. We'll set state to a minimal
+                            # structure that won't break the loop.
+                            from .image_utils import image_to_base64
+                            # Note: We can't easily convert PIL Images back to frames
+                            # So we'll need to get state from an action instead
+                            # Let's construct a minimal state and handle getting frames
+                            # in the game loop by checking if frames are empty and fetching them
+                            state = {
+                                "frame": [],  # Will be fetched by first action
+                                "score": current_score,
+                                "state": current_state,
+                                "guid": guid,
+                                "available_actions": []  # Will be updated
+                            }
+                            logger.info(f"Session restored: guid={guid}, score={current_score}, continuing from action {self._play_action_counter + 1}")
+                            logger.info("Will get current frames from next action execution")
                         else:
-                            logger.warning(f"GUID mismatch: expected {guid}, got {returned_guid}. Session may have expired.")
+                            # If no previous images, fall back to reset
+                            logger.warning("No previous images in checkpoint, cannot resume without resetting")
+                            state = None  # Will trigger fallback below
                     except Exception as e:
                         logger.warning(f"Could not restore game session with guid {self._current_guid}: {e}")
+                        state = None
                 
                 if not session_restored:
-                    # Reset game with guid=None to start fresh, but keep memory
-                    logger.info("Starting new game session with restored memory...")
+                    # Fallback: Reset game with guid=None to start fresh, but keep memory
+                    logger.warning("Could not restore session, resetting game but keeping memory...")
                     state = self.game_client.reset_game(self.card_id, game_id, guid=None)
                     guid = state.get("guid")
                     current_score = state.get("score", 0)
@@ -836,10 +869,18 @@ class MultimodalAgent:
                 try:
                     frames = state.get("frame", [])
                     if not frames:
-                        logger.warning("No frames in state, breaking")
-                        break
-                    
-                    frame_images = [grid_to_image(frame) for frame in frames]
+                        # When resuming from checkpoint, we might not have frames yet
+                        # because we didn't call reset_game (to avoid resetting the game)
+                        if session_restored and self._previous_images and len(self._previous_images) > 0:
+                            # Use previous images from checkpoint for initial analysis
+                            # The next action will get us the current state
+                            logger.info("No frames in state (resuming), using previous images from checkpoint for initial analysis")
+                            frame_images = self._previous_images  # Use previous images directly
+                        else:
+                            logger.warning("No frames in state and no previous images available, breaking")
+                            break
+                    else:
+                        frame_images = [grid_to_image(frame) for frame in frames]
                     
                     analysis = self._analyze_previous_action(frame_images, current_score)
                     
