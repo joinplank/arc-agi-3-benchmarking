@@ -405,7 +405,6 @@ models:
   - name: "o3-mini-2025-01-31-high"
     model_name: "o3-mini-2025-01-31"
     provider: "openai"
-    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "high"
     pricing:
@@ -416,7 +415,6 @@ models:
   - name: "o3-mini-2025-01-31-medium"
     model_name: "o3-mini-2025-01-31"
     provider: "openai"
-    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "medium"
     pricing:
@@ -427,7 +425,6 @@ models:
   - name: "o3-mini-2025-01-31-low"
     model_name: "o3-mini-2025-01-31"
     provider: "openai"
-    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "low"
     pricing:
