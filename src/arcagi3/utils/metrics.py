@@ -4,9 +4,12 @@ import atexit
 import json
 import csv
 import os
+import logging
 from pathlib import Path
 from typing import List, Dict, Any, Callable
 import datetime # Added for timestamp
+
+logger = logging.getLogger(__name__)
 
 # --- Global Storage & Control ---
 _timing_data: List[Dict[str, Any]] = []
@@ -59,21 +62,21 @@ def dump_timing(filename: str = "metrics_timing.csv"):
     if not METRICS_ENABLED:
         return
     if not _timing_data:
-        print("No timing data collected.")
+        logger.warning("No timing data collected.")
         return
 
     # Ensure the main output directory exists
     try:
         _output_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        print(f"Error creating metrics directory {_output_dir.resolve()}: {e}")
+        logger.error(f"Error creating metrics directory {_output_dir.resolve()}: {e}")
         return # Cannot proceed if directory can't be created
 
     output_path = _output_dir / filename # Construct full path using _output_dir and filename
 
     # Check if _timing_data is not empty before accessing keys
     if not _timing_data:
-        print("Internal state error: _timing_data became empty before processing.")
+        logger.error("Internal state error: _timing_data became empty before processing.")
         return
 
     fieldnames = list(_timing_data[0].keys()) # Ensure it's a list
@@ -82,9 +85,9 @@ def dump_timing(filename: str = "metrics_timing.csv"):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(_timing_data)
-        # print(f"Timing metrics saved to {output_path.resolve()}") # Optional: for debugging
+        logger.debug(f"Timing metrics saved to {output_path.resolve()}")
     except Exception as e:
-        print(f"Error saving timing metrics to {output_path.resolve()}: {e}")
+        logger.error(f"Error saving timing metrics to {output_path.resolve()}: {e}")
 
 # --- Automatic Dumping ---
 def _dump_all():

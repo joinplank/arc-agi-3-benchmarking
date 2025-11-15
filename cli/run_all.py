@@ -156,7 +156,7 @@ async def main(
         logger.warning("No tasks to execute")
         return 1
 
-    print(f"\nRunning {len(async_tasks_to_execute)} game executions in parallel...\n")
+    logger.info(f"\nRunning {len(async_tasks_to_execute)} game executions in parallel...\n")
     results = await asyncio.gather(*async_tasks_to_execute, return_exceptions=True)
 
     successful_runs = sum(1 for r in results if r is True)
@@ -175,46 +175,46 @@ async def main(
 
     total_duration = time.perf_counter() - start_time
 
-    print("\n" + "="*80)
-    print("EXECUTION SUMMARY".center(80))
-    print("="*80)
-    print(f"\nExecution Info:")
-    print(f"   • Started: {summary.get('execution_start', 'N/A') if summary else 'N/A'}")
-    print(f"   • Duration: {total_duration:.2f}s")
-    print(f"   • Models tested: {', '.join(model_configs_to_test)}")
-    print(f"   • Games: {summary.get('total_games', 0) if summary else 0}")
-    print(f"   • Total executions: {successful_runs}/{len(results)}")
+    logger.info("\n" + "="*80)
+    logger.info("EXECUTION SUMMARY".center(80))
+    logger.info("="*80)
+    logger.info(f"\nExecution Info:")
+    logger.info(f"   • Started: {summary.get('execution_start', 'N/A') if summary else 'N/A'}")
+    logger.info(f"   • Duration: {total_duration:.2f}s")
+    logger.info(f"   • Models tested: {', '.join(model_configs_to_test)}")
+    logger.info(f"   • Games: {summary.get('total_games', 0) if summary else 0}")
+    logger.info(f"   • Total executions: {successful_runs}/{len(results)}")
     
     if summary and summary.get('stats_by_model'):
-        print(f"\nResults by Model:")
+        logger.info(f"\nResults by Model:")
         for model, stats in summary['stats_by_model'].items():
-            print(f"\n   {model}:")
-            print(f"      Games: {stats.get('total_games', 0)}  |  Wins: {stats.get('wins', 0)}  |  Win Rate: {stats.get('win_rate', 0) * 100:.1f}%")
-            print(f"      Avg Score: {stats.get('avg_score', 0):.0f}  |  Cost: ${stats.get('total_cost', 0):.4f}")
+            logger.info(f"\n   {model}:")
+            logger.info(f"      Games: {stats.get('total_games', 0)}  |  Wins: {stats.get('wins', 0)}  |  Win Rate: {stats.get('win_rate', 0) * 100:.1f}%")
+            logger.info(f"      Avg Score: {stats.get('avg_score', 0):.0f}  |  Cost: ${stats.get('total_cost', 0):.4f}")
     
     if summary and summary.get('overall_stats'):
         overall = summary['overall_stats']
-        print(f"\nOverall Stats:")
-        print(f"   • Total Cost: ${overall.get('total_cost', 0):.4f}")
-        print(f"   • Total Tokens: {overall.get('total_tokens', 0):,}")
-        print(f"   • Wins: {overall.get('wins', 0)}")
-        print(f"   • Game Overs: {overall.get('game_overs', 0)}")
-        print(f"   • Avg Score: {overall.get('avg_score', 0):.0f}")
+        logger.info(f"\nOverall Stats:")
+        logger.info(f"   • Total Cost: ${overall.get('total_cost', 0):.4f}")
+        logger.info(f"   • Total Tokens: {overall.get('total_tokens', 0):,}")
+        logger.info(f"   • Wins: {overall.get('wins', 0)}")
+        logger.info(f"   • Game Overs: {overall.get('game_overs', 0)}")
+        logger.info(f"   • Avg Score: {overall.get('avg_score', 0):.0f}")
     
     exit_code = 0
     if orchestrator_level_failures > 0:
-        print(f"\nFailures: {orchestrator_level_failures}")
+        logger.warning(f"\nFailures: {orchestrator_level_failures}")
         for i, res in enumerate(results):
             if res is False or isinstance(res, Exception):
                 config, game_id = all_jobs_to_run[i]
                 error_type = type(res).__name__ if isinstance(res, Exception) else "Failed"
-                print(f"   • {config}/{game_id}: {error_type}")
+                logger.error(f"   • {config}/{game_id}: {error_type}")
         exit_code = 1
     else:
-        print(f"\nAll executions completed successfully!")
+        logger.info(f"\nAll executions completed successfully!")
     
-    print(f"\nResults saved to: {timestamp_dir}")
-    print("="*80 + "\n")
+    logger.info(f"\nResults saved to: {timestamp_dir}")
+    logger.info("="*80 + "\n")
 
     return exit_code
 

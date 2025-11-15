@@ -242,4 +242,4 @@ class AnthropicAdapter(ProviderAdapter):
         
 if __name__ == "__main__":
     adapter = AnthropicAdapter("claude-3-5-sonnet-20240620")
-    print(type(adapter.extract_json_from_response("[[1, 2, 3], [4, 5, 6]]")))
+    logger.debug(f"Extract JSON test result type: {type(adapter.extract_json_from_response('[[1, 2, 3], [4, 5, 6]]'))}")

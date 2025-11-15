@@ -133,7 +133,7 @@ The JSON should be in this format:
             )
             assistant_content = self._get_content(completion) # Inherited
         except Exception as e:
-            print(f"Error during AI-based JSON extraction via OpenRouter: {e}")
+            logger.error(f"Error during AI-based JSON extraction via OpenRouter: {e}")
             assistant_content = input_response
 
         # Parsing logic adapted from Deepseek/Fireworks
