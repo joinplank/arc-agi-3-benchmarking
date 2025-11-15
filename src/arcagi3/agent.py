@@ -28,6 +28,7 @@ from .schemas import (
 )
 from .utils.retry import retry_with_exponential_backoff
 from .utils import load_hints, find_hints_file
+from .checkpoint import CheckpointManager
 
 
 logger = logging.getLogger(__name__)
@@ -239,17 +240,22 @@ class MultimodalAgent:
         retry_attempts: int = 3,
         num_plays: int = 1,
         use_vision: bool = True,
+        checkpoint_frequency: int = 1,
+        checkpoint_card_id: Optional[str] = None,
     ):
         """
         Initialize the multimodal agent.
-        
+
         Args:
             config: Model configuration name from models.yml
             game_client: GameClient for API communication
-            card_id: Scorecard identifier
+            card_id: Scorecard identifier for API calls
             max_actions: Maximum actions to take before stopping
             retry_attempts: Number of retry attempts for failed API calls
             num_plays: Number of times to play the game (continues session with memory)
+            use_vision: Whether to use vision (images) or text-only mode
+            checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable)
+            checkpoint_card_id: Optional card_id for checkpoint directory (defaults to card_id if not provided)
         """
         self.config = config
         self.game_client = game_client
@@ -257,7 +263,8 @@ class MultimodalAgent:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
-        
+        self.checkpoint_frequency = checkpoint_frequency
+
         self.hints_file = find_hints_file()
         self.current_game_id: Optional[str] = None
         self.current_hint: Optional[str] = None
@@ -304,6 +311,16 @@ class MultimodalAgent:
 
         self._previous_prompt = ""
 
+        # Checkpoint manager - use checkpoint_card_id if provided, otherwise use card_id
+        # This allows resuming from original checkpoint even when scorecard changes
+        effective_checkpoint_id = checkpoint_card_id if checkpoint_card_id else card_id
+        self.checkpoint_manager = CheckpointManager(effective_checkpoint_id)
+
+        # Current play tracking (for checkpoint restoration)
+        self._current_play = 1
+        self._play_action_counter = 0
+        self._current_guid: Optional[str] = None
+
     def _get_system_prompt(self) -> str:
         """
         Get the system prompt, prepending any hint for the current game if available.
@@ -338,7 +355,77 @@ Nothing is known currently other than this is a turn based game that I need to s
 ## Action Log
 No Actions So Far
         """).strip()
-    
+
+    def save_checkpoint(self):
+        """Save current agent state to checkpoint"""
+        try:
+            self.checkpoint_manager.save_state(
+                config=self.config,
+                game_id=self.current_game_id,
+                guid=self._current_guid,
+                max_actions=self.max_actions,
+                retry_attempts=self.retry_attempts,
+                num_plays=self.num_plays,
+                action_counter=self.action_counter,
+                total_cost=self.total_cost,
+                total_usage=self.total_usage,
+                action_history=self.action_history,
+                memory_prompt=self._memory_prompt,
+                previous_action=self._previous_action,
+                previous_images=self._previous_images,
+                previous_score=self._previous_score,
+                current_play=self._current_play,
+                play_action_counter=self._play_action_counter,
+                use_vision=self._use_vision,
+                previous_grids=self._previous_grids,
+            )
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint: {e}", exc_info=True)
+
+    def restore_from_checkpoint(self):
+        """Restore agent state from checkpoint"""
+        logger.info(f"Restoring agent state from checkpoint: {self.checkpoint_manager.card_id}")
+
+        try:
+            state = self.checkpoint_manager.load_state()
+
+            # Restore metadata
+            metadata = state["metadata"]
+            self.current_game_id = metadata["game_id"]
+            self._current_guid = metadata.get("guid")
+            self.max_actions = metadata["max_actions"]
+            self.retry_attempts = metadata["retry_attempts"]
+            self.num_plays = metadata["num_plays"]
+            self.action_counter = metadata["action_counter"]
+            self._current_play = metadata.get("current_play", 1)
+            self._play_action_counter = metadata.get("play_action_counter", 0)
+            self._previous_score = metadata.get("previous_score", 0)
+
+            # Restore costs and usage
+            self.total_cost = state["total_cost"]
+            self.total_usage = state["total_usage"]
+
+            # Restore action history
+            self.action_history = state["action_history"]
+
+            # Restore memory and state
+            self._memory_prompt = state["memory_prompt"]
+            self._previous_action = state["previous_action"]
+            self._previous_images = state["previous_images"]
+            self._previous_grids = state.get("previous_grids", [])
+
+            logger.info(
+                f"Restored checkpoint: game_id={self.current_game_id}, "
+                f"action_counter={self.action_counter}, "
+                f"play={self._current_play}/{self.num_plays}, "
+                f"guid={self._current_guid}"
+            )
+
+            return True
+        except Exception as e:
+            logger.error(f"Failed to restore checkpoint: {e}", exc_info=True)
+            return False
+
     def _extract_usage(self, response: Any) -> tuple[int, int]:
         """Extract token usage from provider response"""
         # Check if it's a stream - streams don't have usage info immediately
@@ -731,57 +818,134 @@ No Actions So Far
         
         return self.game_client.execute_action(action_name, data)
     
-    def play_game(self, game_id: str) -> GameResult:
+    def play_game(self, game_id: str, resume_from_checkpoint: bool = False) -> GameResult:
         """
         Play a complete game and return results.
-        
+
         Args:
             game_id: Game identifier to play
-            
+            resume_from_checkpoint: If True, resume from existing checkpoint
+
         Returns:
             GameResult with complete game information (best result if multiple plays)
         """
+        # Restore from checkpoint if requested
+        if resume_from_checkpoint:
+            if not self.checkpoint_manager.checkpoint_exists():
+                logger.warning(f"No checkpoint found for {self.checkpoint_manager.card_id}, starting fresh")
+                resume_from_checkpoint = False
+            else:
+                if not self.restore_from_checkpoint():
+                    logger.error("Failed to restore checkpoint, starting fresh")
+                    resume_from_checkpoint = False
+                else:
+                    # Use the restored game_id if available
+                    if self.current_game_id:
+                        game_id = self.current_game_id
+                        logger.info(f"Resuming game {game_id} from checkpoint")
+
+        # Store current game ID
+        self.current_game_id = game_id
+
         logger.info(f"Starting game {game_id} with config {self.config} ({self.num_plays} play(s))")
         overall_start_time = time.time()
-        
-        # Set current game ID and load hint for this specific game if available
-        self.current_game_id = game_id
-        if self.hints_file:
-            hints = load_hints(self.hints_file, game_id=game_id)
-            self.current_hint = hints.get(game_id) if hints else None
-            if self.current_hint:
-                logger.info(f"Found hint for game {game_id}")
+
+        # Load hint for this specific game if available (only if not resuming, since hint is already in memory)
+        if not resume_from_checkpoint:
+            if self.hints_file:
+                hints = load_hints(self.hints_file, game_id=game_id)
+                self.current_hint = hints.get(game_id) if hints else None
+                if self.current_hint:
+                    logger.info(f"Found hint for game {game_id}")
+                else:
+                    logger.debug(f"No hint found for game {game_id}")
             else:
-                logger.debug(f"No hint found for game {game_id}")
-        else:
-            self.current_hint = None
-        
+                self.current_hint = None
+
         best_result: Optional[GameResult] = None
-        guid: Optional[str] = None
-        
-        for play_num in range(1, self.num_plays + 1):
+        guid: Optional[str] = self._current_guid if resume_from_checkpoint else None
+
+        # Determine starting play number
+        start_play = self._current_play if resume_from_checkpoint else 1
+
+        for play_num in range(start_play, self.num_plays + 1):
+            self._current_play = play_num
             play_start_time = time.time()
             
             if play_num > 1:
                 logger.info(f"Starting play {play_num}/{self.num_plays} (continuing session with memory)")
             
-            # Reset game (use guid to continue session if not first play)
-            state = self.game_client.reset_game(self.card_id, game_id, guid=guid)
-            guid = state.get("guid")
-            current_score = state.get("score", 0)
-            current_state = state.get("state", "IN_PROGRESS")
-            
-            # Initialize memory only on first play, otherwise keep existing memory
-            if play_num == 1:
-                self._available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
-                available_codes = [f"{HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
-                self._initialize_memory(available_codes)
+            # Skip reset if resuming from checkpoint in the middle of a play
+            if resume_from_checkpoint and play_num == start_play and self._play_action_counter > 0:
+                logger.info(f"Resuming play {play_num} at action {self._play_action_counter}")
+                # Try to continue from existing session with guid (WITHOUT calling reset)
+                session_restored = False
+
+                # Use the saved GUID directly and continue without reset
+                if self._current_guid:
+                    guid = self._current_guid
+                    current_score = self._previous_score
+                    current_state = "IN_PROGRESS"
+                    session_restored = True
+                    # Create a minimal state structure - will be updated after first action
+                    # Use previous grids if available (for resumed sessions)
+                    state = {
+                        "guid": guid,
+                        "score": current_score,
+                        "state": current_state,
+                        "frame": self._previous_grids if self._previous_grids else []
+                    }
+                    logger.info(f"Continuing session with guid: {guid}, score: {current_score}")
+                    logger.info(f"Resuming from action {self._play_action_counter} (no reset sent)")
+
+                if not session_restored:
+                    # If we don't have a GUID for some reason, reset with memory
+                    logger.info("No GUID found, starting new game session with restored memory...")
+                    state = self.game_client.reset_game(self.card_id, game_id, guid=None)
+                    guid = state.get("guid")
+                    current_score = state.get("score", 0)
+                    current_state = state.get("state", "IN_PROGRESS")
+                    logger.info(f"New session started (guid: {guid}, keeping {self.action_counter} actions in memory)")
+
+                play_action_counter = self._play_action_counter if session_restored else 0
+
+                # Reconstruct play_action_history from self.action_history for this play
+                # Actions for this play have action_num from (action_counter - play_action_counter + 1) to action_counter
+                if session_restored and play_action_counter > 0:
+                    start_action_num = self.action_counter - play_action_counter + 1
+                    end_action_num = self.action_counter
+                    play_action_history: List[GameActionRecord] = [
+                        action for action in self.action_history
+                        if start_action_num <= action.action_num <= end_action_num
+                    ]
+                    logger.info(f"Reconstructed {len(play_action_history)} action(s) for current play from checkpoint")
+                else:
+                    # Session not restored or no actions yet in this play
+                    play_action_history: List[GameActionRecord] = []
+
+                resume_from_checkpoint = False  # Only skip reset once
             else:
-                logger.info(f"Continuing with memory from previous play(s)")
-            
-            # Reset play-specific counters (but keep cumulative cost/usage)
-            play_action_counter = 0
-            play_action_history: List[GameActionRecord] = []
+                # Reset game (use guid to continue session if not first play)
+                state = self.game_client.reset_game(self.card_id, game_id, guid=guid)
+                guid = state.get("guid")
+                current_score = state.get("score", 0)
+                current_state = state.get("state", "IN_PROGRESS")
+
+                # Initialize memory only on first play, otherwise keep existing memory
+                if play_num == 1 and not self._memory_prompt:
+                    self._available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
+                    available_codes = [f"{HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
+                    self._initialize_memory(available_codes)
+                else:
+                    logger.info(f"Continuing with memory from previous play(s)")
+
+                # Reset play-specific counters (but keep cumulative cost/usage)
+                play_action_counter = 0
+                play_action_history: List[GameActionRecord] = []
+
+            # Store guid
+            self._current_guid = guid
+            self._play_action_counter = play_action_counter
             
             # Main game loop
             while (
@@ -863,12 +1027,18 @@ No Actions So Far
                     self._previous_score = current_score
                     current_score = new_score
                     play_action_counter += 1
-                    
+                    self._play_action_counter = play_action_counter
+
                     logger.info(
                         f"Play {play_num}, Action {play_action_counter}: {action_name}, "
                         f"Score: {current_score}, State: {current_state}"
                     )
-                    
+
+                    # Save checkpoint periodically
+                    if self.checkpoint_frequency > 0 and play_action_counter % self.checkpoint_frequency == 0:
+                        logger.info(f"Saving checkpoint at action {play_action_counter}")
+                        self.save_checkpoint()
+
                 except Exception as e:
                     logger.error(f"Error during game loop: {e}", exc_info=True)
                     break
@@ -906,12 +1076,15 @@ No Actions So Far
                     best_result = play_result
             elif current_score > best_result.final_score:
                 best_result = play_result
-            
+
+            # Save checkpoint after play completes
+            self.save_checkpoint()
+
             # Stop if we won or no more plays
             if current_state == "WIN":
                 logger.info(f"Game won on play {play_num}! Stopping early.")
                 break
-            
+
             if play_num < self.num_plays:
                 logger.info(f"Play {play_num} ended ({current_state}). Continuing to next play...")
         
@@ -926,6 +1099,11 @@ No Actions So Far
             f"Score: {best_result.final_score}, Total Actions: {self.action_counter}, "
             f"Cost: ${self.total_cost.total_cost:.4f}"
         )
-        
+
+        # Clean up checkpoint on successful completion
+        if best_result.final_state == "WIN":
+            logger.info("Game won, deleting checkpoint")
+            self.checkpoint_manager.delete_checkpoint()
+
         return best_result
 
