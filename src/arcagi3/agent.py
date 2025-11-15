@@ -293,6 +293,7 @@ class MultimodalAgent:
         # Memory for the agent
         self._available_actions: List[str] = []
         self._memory_prompt = ""
+        self._available_actions_prompt = ""  # Store available actions separately
         self._previous_action: Optional[Dict[str, Any]] = None
         self._previous_images: List[Image.Image] = []
         self._previous_grids: List[List[List[int]]] = []  # Store raw grids for text-based providers
@@ -300,14 +301,21 @@ class MultimodalAgent:
         self._previous_prompt = ""
         
     def _initialize_memory(self, available_actions: List[str]):
-        """Initialize the agent's memory as a simple scratchpad, only containing the available actions"""
-        # Memory is now just a scratchpad - LLM can structure it however it wants
+        """Initialize the agent's memory as empty, storing available actions separately"""
+        # Memory starts empty - LLM can structure it however it wants
         human_actions = "\n".join(available_actions)
-        self._memory_prompt = dedent(f"""\
+        self._available_actions_prompt = dedent(f"""\
             ## Known Human Game Inputs
 {human_actions}
         """).strip()
-        logger.info(f"Memory initialized with available actions")
+        self._memory_prompt = ""  # Initialize memory as empty
+        logger.info(f"Memory initialized empty, available actions stored separately")
+    
+    def _get_memory_with_actions(self) -> str:
+        """Get memory merged with available actions text"""
+        if self._memory_prompt:
+            return f"{self._available_actions_prompt}\n\n{self._memory_prompt}"
+        return self._available_actions_prompt
     
     def _get_memory_word_count(self) -> int:
         """Get the word count of the current memory"""
@@ -582,7 +590,7 @@ class MultimodalAgent:
         if current_score > self._previous_score:
             level_complete = "NEW LEVEL!!!! - Whatever you did must have been good!"
         
-        analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{self._memory_prompt}"
+        analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{self._get_memory_with_actions()}"
         
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
@@ -647,13 +655,13 @@ class MultimodalAgent:
         if after.strip():
             self._memory_prompt = after.strip()
             word_count = self._get_memory_word_count()
-            logger.info(f"Memory updated ({word_count} words):\n{self._memory_prompt}")
+            logger.info(f"Memory updated ({word_count} words):\n{self._get_memory_with_actions()}")
             # Enforce memory word limit
             self._enforce_memory_limit()
             # Log memory again after enforcement (in case it was compressed/truncated)
             final_word_count = self._get_memory_word_count()
             if final_word_count != word_count:
-                logger.info(f"Memory after enforcement ({final_word_count} words):\n{self._memory_prompt}")
+                logger.info(f"Memory after enforcement ({final_word_count} words):\n{self._get_memory_with_actions()}")
         return analysis
     
     def _choose_human_action(
@@ -664,9 +672,9 @@ class MultimodalAgent:
     ) -> Dict[str, Any]:
         """Choose the next human-level action"""
         if len(analysis) > 20:
-            self._previous_prompt = f"{analysis}\n\n{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            self._previous_prompt = f"{analysis}\n\n{self._get_memory_with_actions()}\n\n{self.ACTION_INSTRUCT}"
         else:
-            self._previous_prompt = f"{self._memory_prompt}\n\n{self.ACTION_INSTRUCT}"
+            self._previous_prompt = f"{self._get_memory_with_actions()}\n\n{self.ACTION_INSTRUCT}"
         
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
@@ -922,7 +930,7 @@ class MultimodalAgent:
                 total_cost=self.total_cost,
                 usage=self.total_usage,
                 actions=play_action_history,
-                final_memory=self._memory_prompt,
+                final_memory=self._get_memory_with_actions(),
                 timestamp=datetime.now(timezone.utc),
                 scorecard_url=scorecard_url
             )
