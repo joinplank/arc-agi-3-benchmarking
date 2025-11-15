@@ -582,7 +582,6 @@ models:
   - name: "grok-3-mini-beta"
     model_name: "grok-3-mini-beta"
     provider: "grok"
-    is_multimodal: true
     max_completion_tokens: 8192 # Assuming same context as grok-3-beta, adjust if needed
     pricing:
       date: "2025-04-28"
@@ -592,7 +591,6 @@ models:
   - name: "grok-3-mini-beta-high"
     model_name: "grok-3-mini-beta"
     provider: "grok"
-    is_multimodal: true
     max_completion_tokens: 100000 # Assuming same context as grok-3-beta, adjust if needed
     reasoning_effort: "high"
     pricing:
