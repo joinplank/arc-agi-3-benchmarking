@@ -402,16 +402,6 @@ models:
       input: 0.15   # Standard input price; note: a cached input rate of 0.075 exists.
       output: 0.60
 
-  - name: "gpt-4-5-preview-2025-02-27"
-    model_name: "gpt-4.5-preview-2025-02-27"
-    provider: "openai"
-    is_multimodal: true
-    max_completion_tokens: 10000
-    pricing:
-      date: "2025-03-15"
-      input: 75.00 
-      output: 150.00
-
   - name: "o3-mini-2025-01-31-high"
     model_name: "o3-mini-2025-01-31"
     provider: "openai"
@@ -534,35 +524,6 @@ models:
       input: 15.00
       output: 60.00
 
-  - name: "gpt-4.5-2025-02-21-alpha"
-    model_name: "gpt-4.5-2025-02-21-alpha"
-    provider: "openai"
-    is_multimodal: true
-    max_completion_tokens: 4024
-    pricing:
-      date: "2025-02-23"
-      input: 75.00
-      output: 150.00
-
-  - name: "o1-preview-2024-09-12"
-    model_name: "o1-preview-2024-09-12"
-    provider: "openai"
-    is_multimodal: true
-    max_completion_tokens: 32768
-    pricing:
-      date: "2025-04-28"
-      input: 15.00
-      output: 60.00
-
-  - name: "o1-mini-2024-09-12"
-    model_name: "o1-mini-2024-09-12"
-    provider: "openai"
-    is_multimodal: true
-    max_completion_tokens: 65536
-    pricing:
-      date: "2025-04-28"
-      input: 1.10 
-      output: 4.40
 
 ###################
 #### Grok (X.AI) ####
