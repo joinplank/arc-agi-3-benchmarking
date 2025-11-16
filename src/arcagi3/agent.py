@@ -470,6 +470,7 @@ No Actions So Far
                 messages=messages,
                 **self.provider.model_config.kwargs
             )
+        
         elif provider_name == "anthropic":
             # Anthropic requires system messages as separate parameter, not in messages array
             # Extract system messages and filter them out
@@ -503,12 +504,29 @@ No Actions So Far
             anthropic_kwargs = dict(self.provider.model_config.kwargs)
             if system_content:
                 anthropic_kwargs["system"] = system_content
-            
+
+            # Stream call
+            if anthropic_kwargs.get("stream", False):
+                logger.info("Anthropic streaming enabled — consuming stream...")
+                stream_kwargs = {k: v for k, v in anthropic_kwargs.items() if k != "stream"}
+
+                with self.provider.client.messages.stream(
+                    model=self.provider.model_config.model_name,
+                    messages=filtered_messages,
+                    **stream_kwargs
+                ) as stream:
+                    final_message = stream.get_final_message()
+
+                logger.info("Anthropic final message received.")
+                return final_message
+
+            # Normal call
             return self.provider.client.messages.create(
                 model=self.provider.model_config.model_name,
                 messages=filtered_messages,
                 **anthropic_kwargs
             )
+
         elif provider_name == "gemini":
             # GeminiAdapter handles message conversion internally
             return self.provider.chat_completion(messages)
