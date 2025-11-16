@@ -555,20 +555,9 @@ models:
       output: 15.00
     kwargs: {}
 
-  - name: "grok-3-openrouter"
-    model_name: "x-ai/grok-beta"
-    provider: "openrouter"
-    is_multimodal: true
-    max_tokens: 100000
-    pricing:
-      date: "2025-04-22"
-      input: 5.00
-      output: 15.00
-
   - name: "grok-3-mini-beta-low-openrouter"
     model_name: "x-ai/grok-3-mini-beta"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 100000
     extra_body:
       reasoning:
@@ -581,7 +570,6 @@ models:
   - name: "grok-3-mini-beta-high-openrouter"
     model_name: "x-ai/grok-3-mini-beta"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 100000
     extra_body:
       reasoning:
@@ -1013,7 +1001,6 @@ models:
   - name: "qwen3-235b-a22b-07-25"
     model_name: "qwen/qwen3-235b-a22b-07-25"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 100000
     pricing:
       date: "2025-07-21"
