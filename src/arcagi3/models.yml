@@ -854,16 +854,6 @@ models:
       input: 0.10
       output: 0.40
 
-  - name: "gemini-1-5-pro-002"
-    model_name: "gemini-1.5-pro-002"
-    provider: "gemini"
-    is_multimodal: true
-    max_output_tokens: 4024
-    pricing:
-      date: "2025-02-23"
-      input: 1.25
-      output: 5.00
-
   - name: "gemini-2.5-pro-exp-03-25"
     model_name: "gemini-2.5-pro-exp-03-25"
     provider: "gemini"
