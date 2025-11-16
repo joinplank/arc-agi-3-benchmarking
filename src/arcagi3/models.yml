@@ -975,53 +975,6 @@ models:
       input: 0.50  # Cache-hit input price per 1M tokens; note: cache-miss price is 0.55.
       output: 2.18  # Output price per 1M tokens.
 
-##################
-## Hugging Face ##
-##################
-
-  - name: "QwQ-32B"
-    model_name: "Qwen/QwQ-32B"
-    provider: "huggingfacefireworks"
-    is_multimodal: true
-    max_tokens: 32768 # From HF example
-    pricing:
-      date: "2025-03-05"
-      input: 0.90   # Off Fireworks pricing page 3/5/2024
-      output: 0.90
-
-  - name: "QwQ-32B-Fireworks"
-    model_name: "accounts/fireworks/models/qwq-32b"
-    provider: "fireworks"
-    is_multimodal: true
-    max_tokens: 32768 # From HF example
-    pricing:
-      date: "2025-03-05"
-      input: 0.90   # Off Fireworks pricing page 3/5/2024
-      output: 0.90
-
-########################
-###### Fireworks ######
-########################
-
-  - name: "deepseek-r1-fireworks"
-    model_name: "accounts/fireworks/models/deepseek-r1"
-    provider: "fireworks"
-    is_multimodal: true
-    max_tokens: 32768 # From HF example
-    pricing:
-      date: "2025-03-05"
-      input: 3.00   # Off Fireworks pricing page 3/5/2024
-      output: 8.00
-
-  - name: "deepseek-v3-20250324-fireworks"
-    model_name: "accounts/fireworks/models/deepseek-v3-0324"
-    provider: "fireworks"
-    is_multimodal: true
-    max_tokens: 32768 # From HF example
-    pricing:
-      date: "2025-03-24"
-      input: 0.90   # Off Fireworks pricing page 3/5/2024
-      output: 0.90
 
 ########################
 ###### xAI ############
