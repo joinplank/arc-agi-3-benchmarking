@@ -853,7 +853,6 @@ models:
   - name: "magistral-small-2506"
     model_name: "mistralai/magistral-small-2506"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 32000 # Max is 40,000. Leaving cushion for prompt
     pricing:
       date: "2025-06-12"
@@ -863,7 +862,6 @@ models:
   - name: "magistral-medium-2506"
     model_name: "mistralai/magistral-medium-2506"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 32000 # Max is 40,000. Leaving cushion for prompt
     pricing:
       date: "2025-06-12"
@@ -873,7 +871,6 @@ models:
   - name: "magistral-medium-2506-thinking"
     model_name: "mistralai/magistral-medium-2506:thinking"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 32000 # Max is 40,000. Leaving cushion for prompt
     pricing:
       date: "2025-06-12"
@@ -906,7 +903,6 @@ models:
   - name: "deepseek_r1_0528-openrouter"
     model_name: "deepseek/deepseek-r1-0528"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 130000 # Max is 163,840, leaving lots of room for prompt
     pricing:
       date: "2025-05-28"
