@@ -715,17 +715,6 @@ models:
       input: 3.00
       output: 15.00
 
-  - name: "claude-3-5-sonnet-20241022"
-    model_name: "claude-3-5-sonnet-20241022"
-    provider: "anthropic"
-    is_multimodal: true
-    max_tokens: 4024
-    temperature: 0.0
-    pricing:
-      date: "2025-02-23"
-      input: 3.00   # Single input price per 1M tokens.
-      output: 15.00 # Single output price per 1M tokens.
-
   - name: "claude_haiku"
     model_name: "claude-3-5-haiku-latest"
     provider: "anthropic"
