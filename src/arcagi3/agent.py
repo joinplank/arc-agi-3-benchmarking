@@ -465,11 +465,19 @@ No Actions So Far
         provider_name = self.provider.model_config.provider
         
         if provider_name == "openai":
-            return self.provider.client.chat.completions.create(
-                model=self.provider.model_config.model_name,
-                messages=messages,
-                **self.provider.model_config.kwargs
-            )
+            if self.provider.model_config.api_type == "responses":
+                
+                return self.provider.client.responses.create(
+                    model=self.provider.model_config.model_name,
+                    input=messages,
+                    **self.provider.model_config.kwargs
+                )
+            else:
+                return self.provider.client.chat.completions.create(
+                    model=self.provider.model_config.model_name,
+                    messages=messages,
+                    **self.provider.model_config.kwargs
+                )
         
         elif provider_name == "anthropic":
             # Anthropic requires system messages as separate parameter, not in messages array
