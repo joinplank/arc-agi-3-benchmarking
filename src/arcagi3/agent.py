@@ -29,6 +29,15 @@ from .schemas import (
 from .utils.retry import retry_with_exponential_backoff
 from .utils import load_hints, find_hints_file
 from .checkpoint import CheckpointManager
+from dataclasses import dataclass
+
+
+@dataclass
+class StreamResponse:
+    """Wrapper for consumed stream responses"""
+    content: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
 logger = logging.getLogger(__name__)
@@ -500,7 +509,11 @@ class MultimodalAgent:
 
     def _extract_usage(self, response: Any) -> tuple[int, int]:
         """Extract token usage from provider response"""
-        # Check if it's a stream - streams don't have usage info immediately
+        # Handle consumed streams
+        if isinstance(response, StreamResponse):
+            return response.prompt_tokens, response.completion_tokens
+        
+        # Check if it's an unconsumed stream
         if 'Stream' in str(type(response)):
             # For streams, we can't get usage info
             # Return 0,0 for now - usage will need to be tracked differently
@@ -522,7 +535,11 @@ class MultimodalAgent:
     
     def _extract_content(self, response: Any) -> str:
         """Extract text content from provider response"""
-        # Check if it's an OpenAI stream - consume it first
+        # Handle consumed streams
+        if isinstance(response, StreamResponse):
+            return response.content
+        
+        # Check if it's an unconsumed stream - consume it first
         if 'Stream' in str(type(response)):
             # Consume the stream and get the final response
             logger.debug("Consuming OpenAI stream...")
@@ -616,6 +633,26 @@ class MultimodalAgent:
             return converted
         return content
     
+    def _consume_openai_stream(self, stream) -> StreamResponse:
+        """Consume an OpenAI stream and extract content + usage"""
+        full_content = []
+        prompt_tokens = 0
+        completion_tokens = 0
+        
+        try:
+            for chunk in stream:
+                if hasattr(chunk, 'usage') and chunk.usage:
+                    prompt_tokens = chunk.usage.prompt_tokens
+                    completion_tokens = chunk.usage.completion_tokens
+                if hasattr(chunk, 'choices') and chunk.choices:
+                    delta = chunk.choices[0].delta
+                    if hasattr(delta, 'content') and delta.content:
+                        full_content.append(delta.content)
+        except Exception as e:
+            logger.error(f"Error consuming stream: {e}")
+        
+        return StreamResponse(''.join(full_content), prompt_tokens, completion_tokens)
+    
     @retry_with_exponential_backoff(max_retries=3)
     def _call_provider(self, messages: List[Dict[str, Any]]) -> Any:
         """Call provider with retry logic"""
@@ -624,11 +661,24 @@ class MultimodalAgent:
         provider_name = self.provider.model_config.provider
         
         if provider_name == "openai":
-            return self.provider.client.chat.completions.create(
+            kwargs = dict(self.provider.model_config.kwargs)
+            is_streaming = kwargs.get('stream', False)
+            
+            # Request usage data if streaming
+            if is_streaming:
+                kwargs['stream_options'] = {"include_usage": True}
+            
+            response = self.provider.client.chat.completions.create(
                 model=self.provider.model_config.model_name,
                 messages=messages,
-                **self.provider.model_config.kwargs
+                **kwargs
             )
+            
+            # Consume stream immediately if streaming
+            if is_streaming:
+                return self._consume_openai_stream(response)
+            
+            return response
         elif provider_name == "anthropic":
             # Anthropic requires system messages as separate parameter, not in messages array
             # Extract system messages and filter them out
