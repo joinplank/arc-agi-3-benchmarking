@@ -741,7 +741,7 @@ No Actions So Far
         self._update_costs(prompt_tokens, completion_tokens)
         
         action_message = self._extract_content(response)
-        logger.info(f"Human action response: {response}")
+
         logger.info(f"Human action: {action_message[:200]}...")
         
         try:
