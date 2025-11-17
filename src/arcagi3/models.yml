@@ -10,7 +10,6 @@ models:
     provider: "openai"
     is_multimodal: true
     api_type: "responses"
-    background: true
     reasoning:
       summary: "auto"
     max_output_tokens: 272000
@@ -27,7 +26,6 @@ models:
     reasoning:
       effort: "high"
       summary: "auto"
-    stream: true
     max_output_tokens: 200000
     pricing:
       date: "2025-08-07"
@@ -84,7 +82,6 @@ models:
     reasoning:
       effort: "high"
       summary: "auto"
-    stream: true
     max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
@@ -99,7 +96,6 @@ models:
     reasoning:
       effort: "medium"
       summary: "auto"
-    stream: true
     max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
@@ -142,7 +138,6 @@ models:
     reasoning:
       effort: "high"
       summary: "auto"
-    stream: true
     max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
@@ -157,7 +152,6 @@ models:
     reasoning:
       effort: "medium"
       summary: "auto"
-    stream: true
     max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
@@ -172,7 +166,6 @@ models:
     reasoning:
       effort: "low"
       summary: "auto"
-    stream: true
     max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
@@ -200,7 +193,6 @@ models:
     api_type: "responses"
     reasoning:
       effort: "high"
-    background: true
     max_output_tokens: 100000
     pricing:
       date: "2025-06-10"
@@ -214,7 +206,6 @@ models:
     api_type: "responses"
     reasoning:
       effort: "medium"
-    background: true
     max_output_tokens: 100000
     pricing:
       date: "2025-06-10"
@@ -228,7 +219,6 @@ models:
     api_type: "responses"
     reasoning:
       effort: "low"
-    background: true
     max_output_tokens: 100000
     pricing:
       date: "2025-06-10"
@@ -242,7 +232,6 @@ models:
     api_type: "responses"
     reasoning:
       effort: "high"
-    background: true
     max_output_tokens: 100000
     pricing:
       date: "2025-04-16"
@@ -257,7 +246,6 @@ models:
     reasoning:
       effort: "medium"
       # summary: "auto"
-    background: true
     max_output_tokens: 100000
     pricing:
       date: "2025-04-16"
@@ -272,7 +260,6 @@ models:
     reasoning:
       effort: "low"
       # summary: "auto"
-    background: true
     max_output_tokens: 100000
     pricing:
       date: "2025-04-16"
@@ -297,7 +284,6 @@ models:
     api_type: "responses"
     reasoning:
       effort: "high"
-    background: true
     max_output_tokens: 100000
     pricing:
       date: "2025-04-16"
@@ -462,7 +448,6 @@ models:
     reasoning:
       effort: "high"
       # summary: "auto"
-    background: true
     max_output_tokens: 100000
     pricing:
       date: "2025-03-19"
@@ -477,7 +462,6 @@ models:
     reasoning:
       effort: "medium"
       # summary: "auto"
-    background: true
     max_output_tokens: 100000
     pricing:
       date: "2025-03-19"
@@ -492,7 +476,6 @@ models:
     reasoning:
       effort: "low"
       # summary: "auto"
-    background: true
     max_output_tokens: 100000
     pricing:
       date: "2025-03-19"

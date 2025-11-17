@@ -151,6 +151,54 @@ def extract_json_from_response(response_text: str) -> Dict[str, Any]:
         except json.JSONDecodeError:
             raise ValueError(f"Failed to parse JSON: {e}. JSON string was: {json_str[:200]}")
 
+def _convert_messages_to_responses_format(messages):
+    converted = []
+
+    for m in messages:
+        role = m["role"]
+        content = m.get("content")
+
+        # Normalize content to list
+        if isinstance(content, str):
+            content = [{"type": "text", "text": content}]
+
+        parts = []
+
+        for c in content:
+            c_type = c.get("type")
+
+            if c_type == "image_url":
+                url = c["image_url"]["url"]
+                parts.append({
+                    "type": "input_image",
+                    "image_url": url,
+                })
+                continue
+
+            if c_type in ["text", "input_text", "output_text"]:
+
+                if role in ["user", "system"]:
+                    parts.append({
+                        "type": "input_text",
+                        "text": c["text"],
+                    })
+
+                elif role == "assistant":
+                    parts.append({
+                        "type": "output_text",
+                        "text": c["text"],
+                    })
+
+                continue
+
+            parts.append(c)
+
+        converted.append({
+            "role": role,
+            "content": parts,
+        })
+
+    return converted
 
 class MultimodalAgent:
     """Agent that plays ARC-AGI-3 games using multimodal LLMs"""
@@ -364,6 +412,23 @@ No Actions So Far
     def _extract_content(self, response: Any) -> str:
         """Extract text content from provider response"""
         # Check if it's an OpenAI stream - consume it first
+
+
+        if hasattr(response, "output"):
+            texts = []
+            for item in response.output:
+                # Skip thinking blocks (reasoning)
+                if getattr(item, "type", None) == "reasoning":
+                    continue
+
+                # Assistant message
+                if getattr(item, "type", None) == "message":
+                    if hasattr(item, "content"):
+                        for part in item.content:
+                            if getattr(part, "type", None) == "output_text":
+                                texts.append(part.text or "")
+            return "\n".join(texts).strip()
+
         if 'Stream' in str(type(response)):
             # Consume the stream and get the final response
             logger.debug("Consuming OpenAI stream...")
@@ -466,7 +531,7 @@ No Actions So Far
         
         if provider_name == "openai":
             if self.provider.model_config.api_type == "responses":
-                
+                messages = _convert_messages_to_responses_format(messages)
                 return self.provider.client.responses.create(
                     model=self.provider.model_config.model_name,
                     input=messages,
@@ -676,6 +741,7 @@ No Actions So Far
         self._update_costs(prompt_tokens, completion_tokens)
         
         action_message = self._extract_content(response)
+        logger.info(f"Human action response: {response}")
         logger.info(f"Human action: {action_message[:200]}...")
         
         try:
