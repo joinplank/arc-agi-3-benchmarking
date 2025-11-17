@@ -34,6 +34,9 @@ env/
 *~
 .DS_Store
 
+# Checkpoints (saved game states)
+.checkpoint/
+
 # Environment variables
 .env
 .env.local
