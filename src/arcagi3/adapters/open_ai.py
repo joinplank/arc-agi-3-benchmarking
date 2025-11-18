@@ -1,3 +1,6 @@
+import logging
+
+from arcagi3.utils.retry import retry_with_exponential_backoff
 from .provider import ProviderAdapter
 from .openai_base import OpenAIBaseAdapter
 import os
@@ -5,12 +8,63 @@ from dotenv import load_dotenv
 import json
 from openai import OpenAI
 from datetime import datetime, timezone
-from arcagi3.schemas import APIType, AttemptMetadata, Choice, Message, Usage, Cost, CompletionTokensDetails, Attempt
+from arcagi3.schemas import APIType, AttemptMetadata, Choice, Message, StreamResponse, Usage, Cost, CompletionTokensDetails, Attempt
 from typing import Optional, Any, List, Dict
 
 import re
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+def _convert_messages_to_responses_format(messages):
+    converted = []
+
+    for m in messages:
+        role = m["role"]
+        content = m.get("content")
+
+        # Normalize content to list
+        if isinstance(content, str):
+            content = [{"type": "text", "text": content}]
+
+        parts = []
+
+        for c in content:
+            c_type = c.get("type")
+
+            if c_type == "image_url":
+                url = c["image_url"]["url"]
+                parts.append({
+                    "type": "input_image",
+                    "image_url": url,
+                })
+                continue
+
+            if c_type in ["text", "input_text", "output_text"]:
+
+                if role in ["user", "system"]:
+                    parts.append({
+                        "type": "input_text",
+                        "text": c["text"],
+                    })
+
+                elif role == "assistant":
+                    parts.append({
+                        "type": "output_text",
+                        "text": c["text"],
+                    })
+
+                continue
+
+            parts.append(c)
+
+        converted.append({
+            "role": role,
+            "content": parts,
+        })
+
+    return converted
 
 
 class OpenAIAdapter(OpenAIBaseAdapter):
@@ -167,3 +221,40 @@ IMPORTANT: Return ONLY the array, with no additional text, quotes, or formatting
                 pass
             
             return None
+        
+    @retry_with_exponential_backoff(max_retries=3)
+    def call_provider(self, messages):
+        if self.model_config.api_type == "responses":
+            messages = _convert_messages_to_responses_format(messages)
+            return self.client.responses.create(
+                model=self.model_config.model_name,
+                input=messages,
+                **self.model_config.kwargs
+            )
+        else:
+            return self.client.chat.completions.create(
+                model=self.model_config.model_name,
+                messages=messages,
+                **self.model_config.kwargs
+            )
+        
+    
+    def _consume_openai_stream(self, stream) -> StreamResponse:
+        """Consume an OpenAI stream and extract content + usage"""
+        full_content = []
+        prompt_tokens = 0
+        completion_tokens = 0
+        
+        try:
+            for chunk in stream:
+                if hasattr(chunk, 'usage') and chunk.usage:
+                    prompt_tokens = chunk.usage.prompt_tokens
+                    completion_tokens = chunk.usage.completion_tokens
+                if hasattr(chunk, 'choices') and chunk.choices:
+                    delta = chunk.choices[0].delta
+                    if hasattr(delta, 'content') and delta.content:
+                        full_content.append(delta.content)
+        except Exception as e:
+            logger.error(f"Error consuming stream: {e}")
+        
+        return StreamResponse(''.join(full_content), prompt_tokens, completion_tokens)

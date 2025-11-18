@@ -148,3 +148,12 @@ The JSON should be in this format:
             return json_entities.get("response")
         except json.JSONDecodeError:
             return None
+        
+    def extract_usage(self, response):
+        return 0, 0
+    
+    def extract_content(self, response):
+        return ""
+    
+    def call_provider(self, messages):
+        pass
