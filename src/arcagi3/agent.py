@@ -153,54 +153,6 @@ def extract_json_from_response(response_text: str) -> Dict[str, Any]:
         except json.JSONDecodeError:
             raise ValueError(f"Failed to parse JSON: {e}. JSON string was: {json_str[:200]}")
 
-def _convert_messages_to_responses_format(messages):
-    converted = []
-
-    for m in messages:
-        role = m["role"]
-        content = m.get("content")
-
-        # Normalize content to list
-        if isinstance(content, str):
-            content = [{"type": "text", "text": content}]
-
-        parts = []
-
-        for c in content:
-            c_type = c.get("type")
-
-            if c_type == "image_url":
-                url = c["image_url"]["url"]
-                parts.append({
-                    "type": "input_image",
-                    "image_url": url,
-                })
-                continue
-
-            if c_type in ["text", "input_text", "output_text"]:
-
-                if role in ["user", "system"]:
-                    parts.append({
-                        "type": "input_text",
-                        "text": c["text"],
-                    })
-
-                elif role == "assistant":
-                    parts.append({
-                        "type": "output_text",
-                        "text": c["text"],
-                    })
-
-                continue
-
-            parts.append(c)
-
-        converted.append({
-            "role": role,
-            "content": parts,
-        })
-
-    return converted
 
 class MultimodalAgent:
     """Agent that plays ARC-AGI-3 games using multimodal LLMs"""
