@@ -15,7 +15,7 @@ from PIL import Image
 
 from .adapters import create_provider
 from .game_client import GameClient
-from .image_utils import grid_to_image, image_to_base64, make_image_block, image_diff, display_image_in_terminal
+from .utils.image import grid_to_image, image_to_base64, make_image_block, image_diff, display_image_in_terminal
 from .schemas import (
     GameAction,
     GameState,
