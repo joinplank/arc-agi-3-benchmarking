@@ -51,6 +51,7 @@ class CheckpointManager:
         play_action_counter: int = 0,
         use_vision: bool = True,
         previous_grids: Optional[List[List[List[int]]]] = None,
+        current_grids: Optional[List[List[List[int]]]] = None,
     ):
         """
         Save complete agent state to checkpoint.
@@ -136,6 +137,11 @@ class CheckpointManager:
             with open(self.checkpoint_path / "previous_grids.json", "w") as f:
                 json.dump(previous_grids, f)
 
+        # Save current grids (for resuming with correct state)
+        if current_grids:
+            with open(self.checkpoint_path / "current_grids.json", "w") as f:
+                json.dump(current_grids, f)
+
         logger.info(f"Checkpoint saved successfully")
     
     def load_state(self) -> Dict[str, Any]:
@@ -205,7 +211,7 @@ class CheckpointManager:
         previous_images = []
         images_dir = self.checkpoint_path / "previous_images"
         if images_dir.exists():
-            image_files = sorted(images_dir.glob("frame_*.png"))
+            image_files = sorted(images_dir.glob("frame_*.png"), key=lambda p: int(p.stem.split("_")[1]))
             for img_path in image_files:
                 with Image.open(img_path) as img:
                     # Create a copy to fully decouple from file handle
@@ -218,6 +224,13 @@ class CheckpointManager:
             with open(grids_path) as f:
                 previous_grids = json.load(f)
 
+        # Load current grids (for resuming)
+        current_grids = []
+        current_grids_path = self.checkpoint_path / "current_grids.json"
+        if current_grids_path.exists():
+            with open(current_grids_path) as f:
+                current_grids = json.load(f)
+
         logger.info(f"Checkpoint loaded successfully")
 
         return {
@@ -229,6 +242,7 @@ class CheckpointManager:
             "previous_action": previous_action,
             "previous_images": previous_images,
             "previous_grids": previous_grids,
+            "current_grids": current_grids,
         }
     
     def checkpoint_exists(self) -> bool:

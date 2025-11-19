@@ -310,6 +310,7 @@ class MultimodalAgent:
         self._previous_action: Optional[Dict[str, Any]] = None
         self._previous_images: List[Image.Image] = []
         self._previous_grids: List[List[List[int]]] = []  # Store raw grids for text-based providers
+        self._resumed_current_grids: Optional[List[List[List[int]]]] = None # Store current grids from resumed checkpoint
         self._previous_score = 0
 
         self._previous_prompt = ""
@@ -429,7 +430,7 @@ class MultimodalAgent:
         if self._get_memory_word_count() > self.memory_word_limit:
             self._memory_prompt = self._truncate_memory()
 
-    def save_checkpoint(self):
+    def save_checkpoint(self, current_grids: Optional[List[List[List[int]]]] = None):
         """Save current agent state to checkpoint"""
         try:
             self.checkpoint_manager.save_state(
@@ -451,6 +452,7 @@ class MultimodalAgent:
                 play_action_counter=self._play_action_counter,
                 use_vision=self._use_vision,
                 previous_grids=self._previous_grids,
+                current_grids=current_grids,
             )
         except Exception as e:
             logger.error(f"Failed to save checkpoint: {e}", exc_info=True)
@@ -485,7 +487,9 @@ class MultimodalAgent:
             self._memory_prompt = state["memory_prompt"]
             self._previous_action = state["previous_action"]
             self._previous_images = state["previous_images"]
+            self._previous_images = state["previous_images"]
             self._previous_grids = state.get("previous_grids", [])
+            self._resumed_current_grids = state.get("current_grids", [])
 
             logger.info(
                 f"Restored checkpoint: game_id={self.current_game_id}, "
@@ -798,12 +802,15 @@ class MultimodalAgent:
                     current_state = "IN_PROGRESS"
                     session_restored = True
                     # Create a minimal state structure - will be updated after first action
-                    # Use previous grids if available (for resumed sessions)
+                    # Use current grids from checkpoint if available (fixes stale state bug), 
+                    # otherwise fallback to previous grids (legacy behavior)
+                    restored_frame = self._resumed_current_grids if self._resumed_current_grids else self._previous_grids
+                    
                     state = {
                         "guid": guid,
                         "score": current_score,
                         "state": current_state,
-                        "frame": self._previous_grids if self._previous_grids else []
+                        "frame": restored_frame if restored_frame else []
                     }
                     logger.info(f"Continuing session with guid: {guid}, score: {current_score}")
                     logger.info(f"Resuming from action {self._play_action_counter} (no reset sent)")
@@ -913,6 +920,7 @@ class MultimodalAgent:
                     guid = state.get("guid", guid)
                     new_score = state.get("score", current_score)
                     current_state = state.get("state", "IN_PROGRESS")
+                    new_frames = state.get("frame", [])
                     
                     self.action_counter += 1
                     action_record = GameActionRecord(
@@ -947,7 +955,7 @@ class MultimodalAgent:
                     # Save checkpoint periodically
                     if self.checkpoint_frequency > 0 and play_action_counter % self.checkpoint_frequency == 0:
                         logger.info(f"Saving checkpoint at action {play_action_counter}")
-                        self.save_checkpoint()
+                        self.save_checkpoint(current_grids=new_frames)
 
                 except Exception as e:
                     logger.error(f"Error during game loop: {e}", exc_info=True)
@@ -988,7 +996,9 @@ class MultimodalAgent:
                 best_result = play_result
 
             # Save checkpoint after play completes
-            self.save_checkpoint()
+            # Use frames from state which should be current
+            current_frames = state.get("frame", [])
+            self.save_checkpoint(current_grids=current_frames)
 
             # Stop if we won or no more plays
             if current_state == "WIN":
