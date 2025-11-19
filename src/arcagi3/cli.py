@@ -52,6 +52,7 @@ def run_batch_games(
     overwrite_results: bool = False,
     max_actions: int = 40,
     retry_attempts: int = 3,
+    memory_word_limit: Optional[int] = None,
 ):
     """
     Run multiple games sequentially.
@@ -63,6 +64,7 @@ def run_batch_games(
         overwrite_results: Whether to overwrite existing results
         max_actions: Maximum actions per game
         retry_attempts: Number of retry attempts
+        memory_word_limit: Maximum number of words allowed in memory scratchpad
     """
     logger.info(f"Running {len(game_ids)} games with config {config}")
     
@@ -73,13 +75,15 @@ def run_batch_games(
         overwrite_results=overwrite_results,
         max_actions=max_actions,
         retry_attempts=retry_attempts,
+        memory_word_limit=memory_word_limit,
     )
     
     # Track results
     results = []
     successes = 0
     failures = 0
-    
+    skipped = 0
+
     for i, game_id in enumerate(game_ids, 1):
         logger.info(f"\n{'='*60}")
         logger.info(f"Game {i}/{len(game_ids)}: {game_id}")
@@ -121,7 +125,7 @@ def run_batch_games(
     logger.info(f"Total Games: {len(game_ids)}")
     logger.info(f"Successes: {successes}")
     logger.info(f"Failures: {failures}")
-    logger.info(f"Skipped: {len(game_ids) - successes - failures}")
+    logger.info(f"Skipped: {skipped}")
     
     if results:
         total_cost = sum(r.total_cost.total_cost for r in results)
@@ -203,6 +207,12 @@ def main_cli(cli_args: Optional[list] = None):
         action="store_true",
         help="Enable verbose output"
     )
+    parser.add_argument(
+        "--memory-limit",
+        type=int,
+        help="Memory scratchpad word limit (overrides model config)"
+    )
+
     
     args = parser.parse_args(cli_args)
     
@@ -277,9 +287,9 @@ def main_cli(cli_args: Optional[list] = None):
         overwrite_results=args.overwrite_results,
         max_actions=args.max_actions,
         retry_attempts=args.retry_attempts,
+        memory_word_limit=args.memory_limit,
     )
 
 
 if __name__ == "__main__":
     main_cli()
-

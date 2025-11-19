@@ -17,6 +17,7 @@ models:
       date: "2025-10-06"
       input: 15.00
       output: 120.00
+    memory_word_limit: 500
 
   - name: "gpt-5-2025-08-07-high"
     model_name: "gpt-5-2025-08-07"
