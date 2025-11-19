@@ -1,5 +1,9 @@
 
 import logging
+import os
+import threading
+from pathlib import Path
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from arcagi3.checkpoint import CheckpointManager
 from arcagi3.game_client import GameClient
@@ -8,6 +12,9 @@ from arcagi3.arc3tester import ARC3Tester
 from arcagi3.schemas import GameResult
 
 logger = logging.getLogger(__name__)
+
+# Thread-local storage for game ID
+_thread_local = threading.local()
 
 # ============================================================================
 # CLI Arguments
@@ -271,6 +278,71 @@ def print_result(result):
     logger.info(f"{'='*60}\n")
 
 
+class GameLogFilter(logging.Filter):
+    """Filter that only allows logs from a specific game (thread)."""
+    def __init__(self, game_id: str):
+        super().__init__()
+        self.game_id = game_id
+    
+    def filter(self, record):
+        # Only log if this record is from the thread with matching game_id
+        return getattr(_thread_local, 'game_id', None) == self.game_id
+
+
+def _setup_game_logger(game_id: str, config: str, log_dir: Path) -> logging.FileHandler:
+    """
+    Set up a file handler for a specific game using thread-local storage.
+    
+    Args:
+        game_id: Game ID
+        config: Config name
+        log_dir: Directory where log files should be created
+        
+    Returns:
+        File handler for this game
+    """
+    # Set thread-local game_id so filter knows which thread this is
+    _thread_local.game_id = game_id
+    
+    # Create log directory if it doesn't exist
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create log file path
+    log_file = log_dir / f"{game_id}.log"
+    
+    # Create file handler with filter
+    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    file_handler.addFilter(GameLogFilter(game_id))
+    
+    # Add handler to root logger to catch all logs from this thread
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+    
+    return file_handler
+
+
+def _teardown_game_logger(file_handler: logging.FileHandler):
+    """
+    Remove the file handler and clean up thread-local storage.
+    
+    Args:
+        file_handler: The file handler to remove
+    """
+    root_logger = logging.getLogger()
+    try:
+        root_logger.removeHandler(file_handler)
+        file_handler.close()
+    except (ValueError, AttributeError):
+        pass
+    
+    # Clear thread-local game_id
+    if hasattr(_thread_local, 'game_id'):
+        delattr(_thread_local, 'game_id')
+
+
 def _run_single_game(
     game_id: str,
     config: str,
@@ -285,6 +357,7 @@ def _run_single_game(
     use_vision: bool,
     game_index: int,
     total_games: int,
+    log_dir: Optional[Path] = None,
 ) -> Tuple[str, Optional[GameResult], Optional[Exception]]:
     """
     Run a single game and return the result.
@@ -292,52 +365,70 @@ def _run_single_game(
     Returns:
         Tuple of (game_id, result, exception)
     """
-    logger.info(f"\n{'='*60}")
-    logger.info(f"Game {game_index}/{total_games}: {game_id}")
-    logger.info(f"{'='*60}")
-    
-    from arcagi3.utils import load_hints, find_hints_file
-    
-    hints_file = find_hints_file()
-    hint_found = False
-    if hints_file:
-        hints = load_hints(hints_file, game_id=game_id)
-        hint_found = game_id in hints
-    
-    if hint_found:
-        logger.info(f"✓ Hint found for game {game_id}")
-    else:
-        logger.debug(f"⊘ No hint found for game {game_id}")
-    
-    # Create a separate tester instance for each game to ensure thread safety
-    tester = ARC3Tester(
-        config=config,
-        save_results_dir=save_results_dir,
-        overwrite_results=overwrite_results,
-        max_actions=max_actions,
-        retry_attempts=retry_attempts,
-        show_images=show_images,
-        memory_word_limit=memory_word_limit,
-        checkpoint_frequency=checkpoint_frequency,
-        close_on_exit=close_on_exit,
-        use_vision=use_vision,
-    )
+    # Set up per-game logging if log_dir is provided
+    file_handler = None
+    if log_dir:
+        try:
+            file_handler = _setup_game_logger(game_id, config, log_dir)
+        except Exception as e:
+            logger.warning(f"Failed to set up per-game logging for {game_id}: {e}")
     
     try:
-        result = tester.play_game(game_id)
-        if result:
-            logger.info(
-                f"✓ [{game_id}] Completed: {result.final_state}, "
-                f"Score: {result.final_score}, "
-                f"Cost: ${result.total_cost.total_cost:.4f}"
-            )
-            return (game_id, result, None)
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Game {game_index}/{total_games}: {game_id}")
+        logger.info(f"{'='*60}")
+        
+        from arcagi3.utils import load_hints, find_hints_file
+        
+        hints_file = find_hints_file()
+        hint_found = False
+        if hints_file:
+            hints = load_hints(hints_file, game_id=game_id)
+            hint_found = game_id in hints
+        
+        if hint_found:
+            logger.info(f"✓ Hint found for game {game_id}")
         else:
-            logger.info(f"⊘ [{game_id}] Skipped (result already exists)")
-            return (game_id, None, None)
-    except Exception as e:
-        logger.error(f"✗ [{game_id}] Failed: {e}", exc_info=True)
-        return (game_id, None, e)
+            logger.debug(f"⊘ No hint found for game {game_id}")
+        
+        # Create a separate tester instance for each game to ensure thread safety
+        tester = ARC3Tester(
+            config=config,
+            save_results_dir=save_results_dir,
+            overwrite_results=overwrite_results,
+            max_actions=max_actions,
+            retry_attempts=retry_attempts,
+            show_images=show_images,
+            memory_word_limit=memory_word_limit,
+            checkpoint_frequency=checkpoint_frequency,
+            close_on_exit=close_on_exit,
+            use_vision=use_vision,
+        )
+        
+        try:
+            result = tester.play_game(game_id)
+            if result:
+                logger.info(
+                    f"✓ [{game_id}] Completed: {result.final_state}, "
+                    f"Score: {result.final_score}, "
+                    f"Cost: ${result.total_cost.total_cost:.4f}"
+                )
+                if result.scorecard_url:
+                    logger.info(f"View your scorecard online: {result.scorecard_url}")
+                return (game_id, result, None)
+            else:
+                logger.info(f"⊘ [{game_id}] Skipped (result already exists)")
+                return (game_id, None, None)
+        except Exception as e:
+            logger.error(f"✗ [{game_id}] Failed: {e}", exc_info=True)
+            return (game_id, None, e)
+    finally:
+        # Clean up per-game logging
+        if file_handler:
+            try:
+                _teardown_game_logger(file_handler)
+            except Exception as e:
+                logger.warning(f"Failed to teardown logging for {game_id}: {e}")
 
 
 def run_batch_games(
@@ -371,6 +462,11 @@ def run_batch_games(
     """
     logger.info(f"Running {len(game_ids)} games concurrently with config {config}")
     
+    # Create log directory for this concurrent run
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = Path("logs") / config / f"concurrent_{timestamp}"
+    logger.info(f"Log files will be saved to: {log_dir}")
+    
     # Track results
     results = []
     successes = 0
@@ -396,6 +492,7 @@ def run_batch_games(
                 use_vision,
                 i + 1,
                 len(game_ids),
+                log_dir,
             ): game_id
             for i, game_id in enumerate(game_ids)
         }
@@ -437,5 +534,12 @@ def run_batch_games(
         for result in results:
             if result.scorecard_url:
                 logger.info(f"  {result.game_id}: {result.scorecard_url}")
+    
+    # Show log file locations
+    logger.info(f"\nLog Files:")
+    for game_id in game_ids:
+        log_file = log_dir / f"{game_id}.log"
+        if log_file.exists():
+            logger.info(f"  {game_id}: {log_file}")
     
     logger.info(f"{'='*60}\n")
