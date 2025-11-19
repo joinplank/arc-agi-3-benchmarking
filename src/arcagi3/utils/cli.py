@@ -1,9 +1,11 @@
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from arcagi3.checkpoint import CheckpointManager
 from arcagi3.game_client import GameClient
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from arcagi3.arc3tester import ARC3Tester
+from arcagi3.schemas import GameResult
 
 logger = logging.getLogger(__name__)
 
@@ -269,6 +271,75 @@ def print_result(result):
     logger.info(f"{'='*60}\n")
 
 
+def _run_single_game(
+    game_id: str,
+    config: str,
+    save_results_dir: Optional[str],
+    overwrite_results: bool,
+    max_actions: int,
+    retry_attempts: int,
+    show_images: bool,
+    memory_word_limit: Optional[int],
+    checkpoint_frequency: int,
+    close_on_exit: bool,
+    use_vision: bool,
+    game_index: int,
+    total_games: int,
+) -> Tuple[str, Optional[GameResult], Optional[Exception]]:
+    """
+    Run a single game and return the result.
+    
+    Returns:
+        Tuple of (game_id, result, exception)
+    """
+    logger.info(f"\n{'='*60}")
+    logger.info(f"Game {game_index}/{total_games}: {game_id}")
+    logger.info(f"{'='*60}")
+    
+    from arcagi3.utils import load_hints, find_hints_file
+    
+    hints_file = find_hints_file()
+    hint_found = False
+    if hints_file:
+        hints = load_hints(hints_file, game_id=game_id)
+        hint_found = game_id in hints
+    
+    if hint_found:
+        logger.info(f"✓ Hint found for game {game_id}")
+    else:
+        logger.debug(f"⊘ No hint found for game {game_id}")
+    
+    # Create a separate tester instance for each game to ensure thread safety
+    tester = ARC3Tester(
+        config=config,
+        save_results_dir=save_results_dir,
+        overwrite_results=overwrite_results,
+        max_actions=max_actions,
+        retry_attempts=retry_attempts,
+        show_images=show_images,
+        memory_word_limit=memory_word_limit,
+        checkpoint_frequency=checkpoint_frequency,
+        close_on_exit=close_on_exit,
+        use_vision=use_vision,
+    )
+    
+    try:
+        result = tester.play_game(game_id)
+        if result:
+            logger.info(
+                f"✓ [{game_id}] Completed: {result.final_state}, "
+                f"Score: {result.final_score}, "
+                f"Cost: ${result.total_cost.total_cost:.4f}"
+            )
+            return (game_id, result, None)
+        else:
+            logger.info(f"⊘ [{game_id}] Skipped (result already exists)")
+            return (game_id, None, None)
+    except Exception as e:
+        logger.error(f"✗ [{game_id}] Failed: {e}", exc_info=True)
+        return (game_id, None, e)
+
+
 def run_batch_games(
     game_ids: List[str],
     config: str,
@@ -283,7 +354,7 @@ def run_batch_games(
     use_vision: bool = True,
 ):
     """
-    Run multiple games sequentially.
+    Run multiple games concurrently in parallel.
     
     Args:
         game_ids: List of game IDs to run
@@ -298,61 +369,47 @@ def run_batch_games(
         close_on_exit: Close scorecard on exit even if game not won
         use_vision: Use vision to play the game
     """
-    logger.info(f"Running {len(game_ids)} games with config {config}")
-    
-    # Create tester
-    tester = ARC3Tester(
-        config=config,
-        save_results_dir=save_results_dir,
-        overwrite_results=overwrite_results,
-        max_actions=max_actions,
-        retry_attempts=retry_attempts,
-        show_images=show_images,
-        memory_word_limit=memory_word_limit,
-        checkpoint_frequency=checkpoint_frequency,
-        close_on_exit=close_on_exit,
-        use_vision=use_vision,
-    )
+    logger.info(f"Running {len(game_ids)} games concurrently with config {config}")
     
     # Track results
     results = []
     successes = 0
     failures = 0
     skipped = 0
-
-    for i, game_id in enumerate(game_ids, 1):
-        logger.info(f"\n{'='*60}")
-        logger.info(f"Game {i}/{len(game_ids)}: {game_id}")
-        logger.info(f"{'='*60}")
+    
+    # Run games concurrently using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=len(game_ids)) as executor:
+        # Submit all games
+        future_to_game = {
+            executor.submit(
+                _run_single_game,
+                game_id,
+                config,
+                save_results_dir,
+                overwrite_results,
+                max_actions,
+                retry_attempts,
+                show_images,
+                memory_word_limit,
+                checkpoint_frequency,
+                close_on_exit,
+                use_vision,
+                i + 1,
+                len(game_ids),
+            ): game_id
+            for i, game_id in enumerate(game_ids)
+        }
         
-        from arcagi3.utils import load_hints, find_hints_file
-        
-        hints_file = find_hints_file()
-        hint_found = False
-        if hints_file:
-            hints = load_hints(hints_file, game_id=game_id)
-            hint_found = game_id in hints
-        
-        if hint_found:
-            logger.info(f"✓ Hint found for game {game_id}")
-        else:
-            logger.debug(f"⊘ No hint found for game {game_id}")
-        
-        try:
-            result = tester.play_game(game_id)
-            if result:
+        # Collect results as they complete
+        for future in as_completed(future_to_game):
+            game_id, result, exception = future.result()
+            if exception:
+                failures += 1
+            elif result:
                 results.append(result)
                 successes += 1
-                logger.info(
-                    f"✓ Completed: {result.final_state}, "
-                    f"Score: {result.final_score}, "
-                    f"Cost: ${result.total_cost.total_cost:.4f}"
-                )
             else:
-                logger.info(f"⊘ Skipped (result already exists)")
-        except Exception as e:
-            failures += 1
-            logger.error(f"✗ Failed: {e}", exc_info=True)
+                skipped += 1
     
     # Summary
     logger.info(f"\n{'='*60}")
@@ -374,5 +431,11 @@ def run_batch_games(
         logger.info(f"  Total Duration: {total_duration:.2f}s")
         logger.info(f"  Avg Cost per Game: ${total_cost/len(results):.4f}")
         logger.info(f"  Avg Actions per Game: {total_actions/len(results):.1f}")
+        
+        # Show scorecard URLs
+        logger.info(f"\nScorecard Links:")
+        for result in results:
+            if result.scorecard_url:
+                logger.info(f"  {result.game_id}: {result.scorecard_url}")
     
     logger.info(f"{'='*60}\n")
