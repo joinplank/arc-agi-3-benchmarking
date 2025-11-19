@@ -1,11 +1,20 @@
 
 import logging
+import os
+import threading
+from pathlib import Path
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from arcagi3.checkpoint import CheckpointManager
 from arcagi3.game_client import GameClient
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from arcagi3.arc3tester import ARC3Tester
+from arcagi3.schemas import GameResult
 
 logger = logging.getLogger(__name__)
+
+# Thread-local storage for game ID
+_thread_local = threading.local()
 
 # ============================================================================
 # CLI Arguments
@@ -40,6 +49,18 @@ def configure_args(parser):
         type=int,
         default=3,
         help="Number of retry attempts for API failures (default: 3)"
+    )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=3,
+        help="Number of retry attempts for ARC-AGI-3 API calls (default: 3)"
+    )
+    parser.add_argument(
+        "--num_plays",
+        type=int,
+        default=1,
+        help="Number of times to play the game (continues session with memory on subsequent plays) (default: 1)"
     )
 
     # Display
@@ -126,18 +147,6 @@ def configure_main_args(parser):
         "--game_id",
         type=str,
         help="Game ID to play (e.g., 'ls20-016295f7601e'). Not required when using --checkpoint."
-    )
-    parser.add_argument(
-        "--retries",
-        type=int,
-        default=3,
-        help="Number of retry attempts for ARC-AGI-3 API calls (default: 3)"
-    )
-    parser.add_argument(
-        "--num_plays",
-        type=int,
-        default=1,
-        help="Number of times to play the game (continues session with memory on subsequent plays) (default: 1)"
     )
 
 # ============================================================================
@@ -269,60 +278,106 @@ def print_result(result):
     logger.info(f"{'='*60}\n")
 
 
-def run_batch_games(
-    game_ids: List[str],
-    config: str,
-    save_results_dir: Optional[str] = None,
-    overwrite_results: bool = False,
-    max_actions: int = 40,
-    retry_attempts: int = 3,
-    show_images: bool = False,
-    memory_word_limit: Optional[int] = None,
-    checkpoint_frequency: int = 1,
-    close_on_exit: bool = False,
-    use_vision: bool = True,
-):
+class GameLogFilter(logging.Filter):
+    """Filter that only allows logs from a specific game (thread)."""
+    def __init__(self, game_id: str):
+        super().__init__()
+        self.game_id = game_id
+    
+    def filter(self, record):
+        # Only log if this record is from the thread with matching game_id
+        return getattr(_thread_local, 'game_id', None) == self.game_id
+
+
+def _setup_game_logger(game_id: str, config: str, log_dir: Path) -> logging.FileHandler:
     """
-    Run multiple games sequentially.
+    Set up a file handler for a specific game using thread-local storage.
     
     Args:
-        game_ids: List of game IDs to run
-        config: Model configuration name
-        save_results_dir: Directory to save results
-        overwrite_results: Whether to overwrite existing results
-        max_actions: Maximum actions per game
-        retry_attempts: Number of retry attempts
-        show_images: Whether to display game frames in the terminal
-        memory_word_limit: Maximum number of words allowed in memory scratchpad
-        checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable periodic checkpoints)
-        close_on_exit: Close scorecard on exit even if game not won
-        use_vision: Use vision to play the game
+        game_id: Game ID
+        config: Config name
+        log_dir: Directory where log files should be created
+        
+    Returns:
+        File handler for this game
     """
-    logger.info(f"Running {len(game_ids)} games with config {config}")
+    # Set thread-local game_id so filter knows which thread this is
+    _thread_local.game_id = game_id
     
-    # Create tester
-    tester = ARC3Tester(
-        config=config,
-        save_results_dir=save_results_dir,
-        overwrite_results=overwrite_results,
-        max_actions=max_actions,
-        retry_attempts=retry_attempts,
-        show_images=show_images,
-        memory_word_limit=memory_word_limit,
-        checkpoint_frequency=checkpoint_frequency,
-        close_on_exit=close_on_exit,
-        use_vision=use_vision,
-    )
+    # Create log directory if it doesn't exist
+    log_dir.mkdir(parents=True, exist_ok=True)
     
-    # Track results
-    results = []
-    successes = 0
-    failures = 0
-    skipped = 0
+    # Create log file path
+    log_file = log_dir / f"{game_id}.log"
+    
+    # Create file handler with filter
+    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    file_handler.addFilter(GameLogFilter(game_id))
+    
+    # Add handler to root logger to catch all logs from this thread
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+    
+    return file_handler
 
-    for i, game_id in enumerate(game_ids, 1):
+
+def _teardown_game_logger(file_handler: logging.FileHandler):
+    """
+    Remove the file handler and clean up thread-local storage.
+    
+    Args:
+        file_handler: The file handler to remove
+    """
+    root_logger = logging.getLogger()
+    try:
+        root_logger.removeHandler(file_handler)
+        file_handler.close()
+    except (ValueError, AttributeError):
+        pass
+    
+    # Clear thread-local game_id
+    if hasattr(_thread_local, 'game_id'):
+        delattr(_thread_local, 'game_id')
+
+
+def _run_single_game(
+    game_id: str,
+    config: str,
+    save_results_dir: Optional[str],
+    overwrite_results: bool,
+    max_actions: int,
+    retry_attempts: int,
+    api_retries: int,
+    num_plays: int,
+    show_images: bool,
+    memory_word_limit: Optional[int],
+    checkpoint_frequency: int,
+    close_on_exit: bool,
+    use_vision: bool,
+    game_index: int,
+    total_games: int,
+    log_dir: Optional[Path] = None,
+) -> Tuple[str, Optional[GameResult], Optional[Exception]]:
+    """
+    Run a single game and return the result.
+    
+    Returns:
+        Tuple of (game_id, result, exception)
+    """
+    # Set up per-game logging if log_dir is provided
+    file_handler = None
+    if log_dir:
+        try:
+            file_handler = _setup_game_logger(game_id, config, log_dir)
+        except Exception as e:
+            logger.warning(f"Failed to set up per-game logging for {game_id}: {e}")
+    
+    try:
         logger.info(f"\n{'='*60}")
-        logger.info(f"Game {i}/{len(game_ids)}: {game_id}")
+        logger.info(f"Game {game_index}/{total_games}: {game_id}")
         logger.info(f"{'='*60}")
         
         from arcagi3.utils import load_hints, find_hints_file
@@ -338,21 +393,130 @@ def run_batch_games(
         else:
             logger.debug(f"⊘ No hint found for game {game_id}")
         
+        # Create a separate tester instance for each game to ensure thread safety
+        tester = ARC3Tester(
+            config=config,
+            save_results_dir=save_results_dir,
+            overwrite_results=overwrite_results,
+            max_actions=max_actions,
+            retry_attempts=retry_attempts,
+            api_retries=api_retries,
+            num_plays=num_plays,
+            show_images=show_images,
+            memory_word_limit=memory_word_limit,
+            checkpoint_frequency=checkpoint_frequency,
+            close_on_exit=close_on_exit,
+            use_vision=use_vision,
+        )
+        
         try:
             result = tester.play_game(game_id)
             if result:
-                results.append(result)
-                successes += 1
                 logger.info(
-                    f"✓ Completed: {result.final_state}, "
+                    f"✓ [{game_id}] Completed: {result.final_state}, "
                     f"Score: {result.final_score}, "
                     f"Cost: ${result.total_cost.total_cost:.4f}"
                 )
+                if result.scorecard_url:
+                    logger.info(f"View your scorecard online: {result.scorecard_url}")
+                return (game_id, result, None)
             else:
-                logger.info(f"⊘ Skipped (result already exists)")
+                logger.info(f"⊘ [{game_id}] Skipped (result already exists)")
+                return (game_id, None, None)
         except Exception as e:
-            failures += 1
-            logger.error(f"✗ Failed: {e}", exc_info=True)
+            logger.error(f"✗ [{game_id}] Failed: {e}", exc_info=True)
+            return (game_id, None, e)
+    finally:
+        # Clean up per-game logging
+        if file_handler:
+            try:
+                _teardown_game_logger(file_handler)
+            except Exception as e:
+                logger.warning(f"Failed to teardown logging for {game_id}: {e}")
+
+
+def run_batch_games(
+    game_ids: List[str],
+    config: str,
+    save_results_dir: Optional[str] = None,
+    overwrite_results: bool = False,
+    max_actions: int = 40,
+    retry_attempts: int = 3,
+    api_retries: int = 3,
+    num_plays: int = 1,
+    show_images: bool = False,
+    memory_word_limit: Optional[int] = None,
+    checkpoint_frequency: int = 1,
+    close_on_exit: bool = False,
+    use_vision: bool = True,
+):
+    """
+    Run multiple games concurrently in parallel.
+    
+    Args:
+        game_ids: List of game IDs to run
+        config: Model configuration name
+        save_results_dir: Directory to save results
+        overwrite_results: Whether to overwrite existing results
+        max_actions: Maximum actions per game
+        retry_attempts: Number of retry attempts for API failures
+        api_retries: Number of retry attempts for ARC-AGI-3 API calls
+        num_plays: Number of times to play each game (continues session with memory)
+        show_images: Whether to display game frames in the terminal
+        memory_word_limit: Maximum number of words allowed in memory scratchpad
+        checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable periodic checkpoints)
+        close_on_exit: Close scorecard on exit even if game not won
+        use_vision: Use vision to play the game
+    """
+    logger.info(f"Running {len(game_ids)} games concurrently with config {config}")
+    
+    # Create log directory for this concurrent run
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = Path("logs") / config / f"concurrent_{timestamp}"
+    logger.info(f"Log files will be saved to: {log_dir}")
+    
+    # Track results
+    results = []
+    successes = 0
+    failures = 0
+    skipped = 0
+    
+    # Run games concurrently using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=len(game_ids)) as executor:
+        # Submit all games
+        future_to_game = {
+            executor.submit(
+                _run_single_game,
+                game_id,
+                config,
+                save_results_dir,
+                overwrite_results,
+                max_actions,
+                retry_attempts,
+                api_retries,
+                num_plays,
+                show_images,
+                memory_word_limit,
+                checkpoint_frequency,
+                close_on_exit,
+                use_vision,
+                i + 1,
+                len(game_ids),
+                log_dir,
+            ): game_id
+            for i, game_id in enumerate(game_ids)
+        }
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_game):
+            game_id, result, exception = future.result()
+            if exception:
+                failures += 1
+            elif result:
+                results.append(result)
+                successes += 1
+            else:
+                skipped += 1
     
     # Summary
     logger.info(f"\n{'='*60}")
@@ -374,5 +538,18 @@ def run_batch_games(
         logger.info(f"  Total Duration: {total_duration:.2f}s")
         logger.info(f"  Avg Cost per Game: ${total_cost/len(results):.4f}")
         logger.info(f"  Avg Actions per Game: {total_actions/len(results):.1f}")
+        
+        # Show scorecard URLs
+        logger.info(f"\nScorecard Links:")
+        for result in results:
+            if result.scorecard_url:
+                logger.info(f"  {result.game_id}: {result.scorecard_url}")
+    
+    # Show log file locations
+    logger.info(f"\nLog Files:")
+    for game_id in game_ids:
+        log_file = log_dir / f"{game_id}.log"
+        if log_file.exists():
+            logger.info(f"  {game_id}: {log_file}")
     
     logger.info(f"{'='*60}\n")
