@@ -278,6 +278,9 @@ def run_batch_games(
     retry_attempts: int = 3,
     show_images: bool = False,
     memory_word_limit: Optional[int] = None,
+    checkpoint_frequency: int = 1,
+    close_on_exit: bool = False,
+    use_vision: bool = True,
 ):
     """
     Run multiple games sequentially.
@@ -291,6 +294,9 @@ def run_batch_games(
         retry_attempts: Number of retry attempts
         show_images: Whether to display game frames in the terminal
         memory_word_limit: Maximum number of words allowed in memory scratchpad
+        checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable periodic checkpoints)
+        close_on_exit: Close scorecard on exit even if game not won
+        use_vision: Use vision to play the game
     """
     logger.info(f"Running {len(game_ids)} games with config {config}")
     
@@ -303,6 +309,9 @@ def run_batch_games(
         retry_attempts=retry_attempts,
         show_images=show_images,
         memory_word_limit=memory_word_limit,
+        checkpoint_frequency=checkpoint_frequency,
+        close_on_exit=close_on_exit,
+        use_vision=use_vision,
     )
     
     # Track results
