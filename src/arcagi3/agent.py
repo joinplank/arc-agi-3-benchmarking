@@ -487,7 +487,6 @@ class MultimodalAgent:
             self._memory_prompt = state["memory_prompt"]
             self._previous_action = state["previous_action"]
             self._previous_images = state["previous_images"]
-            self._previous_images = state["previous_images"]
             self._previous_grids = state.get("previous_grids", [])
             self._resumed_current_grids = state.get("current_grids", [])
 
