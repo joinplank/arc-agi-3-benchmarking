@@ -52,6 +52,7 @@ def run_batch_games(
     overwrite_results: bool = False,
     max_actions: int = 40,
     retry_attempts: int = 3,
+    memory_word_limit: Optional[int] = None,
 ):
     """
     Run multiple games sequentially.
@@ -73,6 +74,7 @@ def run_batch_games(
         overwrite_results=overwrite_results,
         max_actions=max_actions,
         retry_attempts=retry_attempts,
+        memory_word_limit=memory_word_limit,
     )
     
     # Track results
@@ -200,8 +202,12 @@ def main_cli(cli_args: Optional[list] = None):
     )
     parser.add_argument(
         "--verbose",
-        action="store_true",
         help="Enable verbose output"
+    )
+    parser.add_argument(
+        "--memory-limit",
+        type=int,
+        help="Maximum number of words allowed in memory scratchpad (overrides model config)"
     )
     
     args = parser.parse_args(cli_args)
@@ -277,6 +283,7 @@ def main_cli(cli_args: Optional[list] = None):
         overwrite_results=args.overwrite_results,
         max_actions=args.max_actions,
         retry_attempts=args.retry_attempts,
+        memory_word_limit=args.memory_limit,
     )
 
 

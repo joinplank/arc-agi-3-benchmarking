@@ -40,6 +40,7 @@ class ARC3Tester:
         use_vision: bool = True,
         checkpoint_frequency: int = 1,
         close_on_exit: bool = False,
+        memory_word_limit: Optional[int] = None,
     ):
         """
         Initialize the tester.
@@ -55,6 +56,7 @@ class ARC3Tester:
             use_vision: Whether to use vision (images) or text-only mode
             checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable)
             close_on_exit: Close scorecard on exit even if not won (prevents checkpoint resume)
+            memory_word_limit: Maximum number of words allowed in memory scratchpad (overrides config/default)
         """
         self.config = config
         self.model_config = read_models_config(config)
@@ -66,6 +68,14 @@ class ARC3Tester:
         self.use_vision = use_vision
         self.checkpoint_frequency = checkpoint_frequency
         self.close_on_exit = close_on_exit
+        
+        # Determine memory limit: CLI > Config > Default (500)
+        if memory_word_limit is not None:
+            self.memory_word_limit = memory_word_limit
+        else:
+            # Check if defined in model config kwargs
+            self.memory_word_limit = self.model_config.kwargs.get("memory_word_limit", 500)
+            
         # Initialize game client
         self.game_client = GameClient(max_retries=api_retries)
         
@@ -152,6 +162,7 @@ class ARC3Tester:
                 use_vision=self.use_vision,
                 checkpoint_frequency=self.checkpoint_frequency,
                 checkpoint_card_id=checkpoint_card_id,
+                memory_word_limit=self.memory_word_limit,
             )
 
             # Play game (with checkpoint support)
@@ -294,6 +305,11 @@ def main_cli(cli_args: Optional[list] = None):
         action="store_true",
         help="Enable verbose output (DEBUG level for app, WARNING for libraries)"
     )
+    parser.add_argument(
+        "--memory-limit",
+        type=int,
+        help="Maximum number of words allowed in memory scratchpad (overrides model config)"
+    )
     
     args = parser.parse_args(cli_args)
 
@@ -405,6 +421,7 @@ def main_cli(cli_args: Optional[list] = None):
         use_vision=args.use_vision,
         checkpoint_frequency=args.checkpoint_frequency,
         close_on_exit=args.close_on_exit,
+        memory_word_limit=args.memory_limit,
     )
 
     # Play game (with checkpoint support)

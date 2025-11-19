@@ -209,7 +209,7 @@ class MultimodalAgent:
         play the game better. You can structure it however you want - it's your scratchpad
         to use as you see fit. IMPORTANT: The memory scratchpad should be plain text.
         Use natural language, bullet points, or any text format you prefer. Keep the memory 
-        scratchpad concise and within approximately 500 words to help manage context window size. 
+        scratchpad concise and within approximately {memory_limit} words to help manage context window size. 
         Focus on what's most important for understanding the game environment and rules to beat 
         the game in as few moves as possible.
         ---
@@ -530,7 +530,7 @@ class MultimodalAgent:
         if current_score > self._previous_score:
             level_complete = "NEW LEVEL!!!! - Whatever you did must have been good!"
         
-        analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{self._get_memory_with_actions()}"
+        analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT.format(memory_limit=self.memory_word_limit)}\n\n{self._get_memory_with_actions()}"
         
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
