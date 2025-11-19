@@ -50,6 +50,18 @@ def configure_args(parser):
         default=3,
         help="Number of retry attempts for API failures (default: 3)"
     )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=3,
+        help="Number of retry attempts for ARC-AGI-3 API calls (default: 3)"
+    )
+    parser.add_argument(
+        "--num_plays",
+        type=int,
+        default=1,
+        help="Number of times to play the game (continues session with memory on subsequent plays) (default: 1)"
+    )
 
     # Display
     parser.add_argument(
@@ -135,18 +147,6 @@ def configure_main_args(parser):
         "--game_id",
         type=str,
         help="Game ID to play (e.g., 'ls20-016295f7601e'). Not required when using --checkpoint."
-    )
-    parser.add_argument(
-        "--retries",
-        type=int,
-        default=3,
-        help="Number of retry attempts for ARC-AGI-3 API calls (default: 3)"
-    )
-    parser.add_argument(
-        "--num_plays",
-        type=int,
-        default=1,
-        help="Number of times to play the game (continues session with memory on subsequent plays) (default: 1)"
     )
 
 # ============================================================================
@@ -350,6 +350,8 @@ def _run_single_game(
     overwrite_results: bool,
     max_actions: int,
     retry_attempts: int,
+    api_retries: int,
+    num_plays: int,
     show_images: bool,
     memory_word_limit: Optional[int],
     checkpoint_frequency: int,
@@ -398,6 +400,8 @@ def _run_single_game(
             overwrite_results=overwrite_results,
             max_actions=max_actions,
             retry_attempts=retry_attempts,
+            api_retries=api_retries,
+            num_plays=num_plays,
             show_images=show_images,
             memory_word_limit=memory_word_limit,
             checkpoint_frequency=checkpoint_frequency,
@@ -438,6 +442,8 @@ def run_batch_games(
     overwrite_results: bool = False,
     max_actions: int = 40,
     retry_attempts: int = 3,
+    api_retries: int = 3,
+    num_plays: int = 1,
     show_images: bool = False,
     memory_word_limit: Optional[int] = None,
     checkpoint_frequency: int = 1,
@@ -453,7 +459,9 @@ def run_batch_games(
         save_results_dir: Directory to save results
         overwrite_results: Whether to overwrite existing results
         max_actions: Maximum actions per game
-        retry_attempts: Number of retry attempts
+        retry_attempts: Number of retry attempts for API failures
+        api_retries: Number of retry attempts for ARC-AGI-3 API calls
+        num_plays: Number of times to play each game (continues session with memory)
         show_images: Whether to display game frames in the terminal
         memory_word_limit: Maximum number of words allowed in memory scratchpad
         checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable periodic checkpoints)
@@ -485,6 +493,8 @@ def run_batch_games(
                 overwrite_results,
                 max_actions,
                 retry_attempts,
+                api_retries,
+                num_plays,
                 show_images,
                 memory_word_limit,
                 checkpoint_frequency,
