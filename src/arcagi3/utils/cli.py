@@ -65,6 +65,22 @@ def configure_args(parser):
         type=int,
         help="Maximum number of words allowed in memory scratchpad (overrides model config)"
     )
+    parser.add_argument(
+        "--use_vision",
+        action="store_true",
+        help="Use vision to play the game (default: True)"
+    )
+    parser.add_argument(
+        "--checkpoint-frequency",
+        type=int,
+        default=1,
+        help="Save checkpoint every N actions (default: 1, 0 to disable periodic checkpoints)"
+    )
+    parser.add_argument(
+        "--close-on-exit",
+        action="store_true",
+        help="Close scorecard on exit even if game not won (prevents checkpoint resume)"
+    )
 
 def configure_cli_args(parser):
     # Game selection (mutually exclusive)
@@ -110,22 +126,6 @@ def configure_main_args(parser):
         "--game_id",
         type=str,
         help="Game ID to play (e.g., 'ls20-016295f7601e'). Not required when using --checkpoint."
-    )
-    parser.add_argument(
-        "--use_vision",
-        action="store_true",
-        help="Use vision to play the game (default: True)"
-    )
-    parser.add_argument(
-        "--checkpoint-frequency",
-        type=int,
-        default=1,
-        help="Save checkpoint every N actions (default: 1, 0 to disable periodic checkpoints)"
-    )
-    parser.add_argument(
-        "--close-on-exit",
-        action="store_true",
-        help="Close scorecard on exit even if game not won (prevents checkpoint resume)"
     )
     parser.add_argument(
         "--retries",

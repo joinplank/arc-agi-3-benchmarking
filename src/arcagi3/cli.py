@@ -95,6 +95,9 @@ def main_cli(cli_args: Optional[list] = None):
         retry_attempts=args.retry_attempts,
         show_images=args.show_images,
         memory_word_limit=args.memory_limit,
+        checkpoint_frequency=args.checkpoint_frequency,
+        close_on_exit=args.close_on_exit,
+        use_vision=args.use_vision,
     )
 
 
