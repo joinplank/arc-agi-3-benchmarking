@@ -37,6 +37,7 @@ class ARC3Tester:
         retry_attempts: int = 3,
         api_retries: int = 3,
         num_plays: int = 1,
+        show_images: bool = False,
         use_vision: bool = True,
         checkpoint_frequency: int = 1,
         close_on_exit: bool = False,
@@ -53,6 +54,7 @@ class ARC3Tester:
             retry_attempts: Number of retry attempts for API failures
             api_retries: Number of retry attempts for ARC-AGI-3 API calls
             num_plays: Number of times to play the game (continues session with memory)
+            show_images: Whether to display game frames in the terminal
             use_vision: Whether to use vision (images) or text-only mode
             checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable)
             close_on_exit: Close scorecard on exit even if not won (prevents checkpoint resume)
@@ -65,6 +67,7 @@ class ARC3Tester:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
+        self.show_images = show_images
         self.use_vision = use_vision
         self.checkpoint_frequency = checkpoint_frequency
         self.close_on_exit = close_on_exit
@@ -159,6 +162,7 @@ class ARC3Tester:
                 max_actions=self.max_actions,
                 retry_attempts=self.retry_attempts,
                 num_plays=self.num_plays,
+                show_images=self.show_images,
                 use_vision=self.use_vision,
                 checkpoint_frequency=self.checkpoint_frequency,
                 checkpoint_card_id=checkpoint_card_id,
@@ -294,6 +298,11 @@ def main_cli(cli_args: Optional[list] = None):
         help="Number of times to play the game (continues session with memory on subsequent plays) (default: 1)"
     )
     parser.add_argument(
+        "--show-images",
+        action="store_true",
+        help="Display game frames in the terminal"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -418,6 +427,7 @@ def main_cli(cli_args: Optional[list] = None):
         retry_attempts=args.retry_attempts,
         api_retries=args.retries,
         num_plays=args.num_plays,
+        show_images=args.show_images,
         use_vision=args.use_vision,
         checkpoint_frequency=args.checkpoint_frequency,
         close_on_exit=args.close_on_exit,

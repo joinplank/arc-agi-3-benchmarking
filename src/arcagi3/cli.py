@@ -52,6 +52,7 @@ def run_batch_games(
     overwrite_results: bool = False,
     max_actions: int = 40,
     retry_attempts: int = 3,
+    show_images: bool = False,
     memory_word_limit: Optional[int] = None,
 ):
     """
@@ -64,6 +65,7 @@ def run_batch_games(
         overwrite_results: Whether to overwrite existing results
         max_actions: Maximum actions per game
         retry_attempts: Number of retry attempts
+        show_images: Whether to display game frames in the terminal
         memory_word_limit: Maximum number of words allowed in memory scratchpad
     """
     logger.info(f"Running {len(game_ids)} games with config {config}")
@@ -75,6 +77,7 @@ def run_batch_games(
         overwrite_results=overwrite_results,
         max_actions=max_actions,
         retry_attempts=retry_attempts,
+        show_images=show_images,
         memory_word_limit=memory_word_limit,
     )
     
@@ -196,6 +199,11 @@ def main_cli(cli_args: Optional[list] = None):
         help="Number of retry attempts for API failures (default: 3)"
     )
     parser.add_argument(
+        "--show-images",
+        action="store_true",
+        help="Display game frames in the terminal"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -287,6 +295,7 @@ def main_cli(cli_args: Optional[list] = None):
         overwrite_results=args.overwrite_results,
         max_actions=args.max_actions,
         retry_attempts=args.retry_attempts,
+        show_images=args.show_images,
         memory_word_limit=args.memory_limit,
     )
 

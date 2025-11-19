@@ -57,6 +57,15 @@ python main.py \
   --save_results_dir "results/gpt4o"
 ```
 
+### Display Images in Terminal
+Show game frames directly in your terminal during gameplay:
+```bash
+python main.py \
+  --game_id "ls20-fa137e247ce6" \
+  --config "gpt-4o-mini-2024-07-18" \
+  --show-images
+```
+This renders each frame as colored blocks in your terminal, useful for debugging and visualizing the agent's progress in real-time.
 
 ### Run Multiple Games
 
@@ -184,6 +193,7 @@ client.close_scorecard(card_id)
 | `--num_plays` | Number of plays (continues session) | 1 |
 | `--save_results_dir` | Results directory | `results/<config>` |
 | `--retry_attempts` | API retry attempts | 3 |
+| `--show-images` | Display frames in terminal | False |
 | `--use_vision` | Use vision mode | True |
 | `--verbose` | Enable verbose logging | False |
 
