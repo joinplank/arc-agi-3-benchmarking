@@ -8,7 +8,8 @@ import sys
 import os
 import argparse
 import logging
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional, List
 from dotenv import load_dotenv
 
 # Add src to path
@@ -23,6 +24,25 @@ from arcagi3.checkpoint import CheckpointManager
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+
+
+def log_result_summary(result: GameResult, prefix: str = "") -> None:
+    """Log a standardized summary for a finished game result."""
+    header_prefix = f"{prefix} " if prefix else ""
+    logger.info(f"\n{header_prefix}{'='*60}")
+    logger.info(f"{header_prefix}Game Result: {result.game_id}")
+    logger.info(f"{header_prefix}{'='*60}")
+    logger.info(f"{header_prefix}Final Score: {result.final_score}")
+    logger.info(f"{header_prefix}Final State: {result.final_state}")
+    logger.info(f"{header_prefix}Actions Taken: {result.actions_taken}")
+    logger.info(f"{header_prefix}Duration: {result.duration_seconds:.2f}s")
+    logger.info(f"{header_prefix}Total Cost: ${result.total_cost.total_cost:.4f}")
+    logger.info(f"{header_prefix}Total Tokens: {result.usage.total_tokens}")
+    if result.scorecard_url:
+        logger.info(f"{header_prefix}Replay: {result.scorecard_url}")
+    else:
+        logger.info(f"{header_prefix}Replay link unavailable (scorecard URL missing)")
+    logger.info(f"{header_prefix}{'='*60}\n")
 
 
 class ARC3Tester:
@@ -294,6 +314,13 @@ def main_cli(cli_args: Optional[list] = None):
         help="Number of times to play the game (continues session with memory on subsequent plays) (default: 1)"
     )
     parser.add_argument(
+        "--num-concurrent-runs",
+        dest="num_concurrent_runs",
+        type=int,
+        default=1,
+        help="Number of parallel game runs to execute (default: 1)"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -377,6 +404,12 @@ def main_cli(cli_args: Optional[list] = None):
         if not args.game_id or not args.config:
             parser.error("--game_id and --config are required unless using --checkpoint")
 
+    if args.num_concurrent_runs < 1:
+        parser.error("--num-concurrent-runs must be >= 1")
+
+    if args.num_concurrent_runs > 1 and args.checkpoint:
+        parser.error("--num-concurrent-runs cannot be used together with --checkpoint")
+
     # Configure logging
     if args.verbose:
         # Verbose mode: Show DEBUG for our code, WARNING+ for libraries
@@ -409,8 +442,7 @@ def main_cli(cli_args: Optional[list] = None):
     if not args.save_results_dir:
         args.save_results_dir = f"results/{args.config}"
     
-    # Create tester
-    tester = ARC3Tester(
+    tester_kwargs = dict(
         config=args.config,
         save_results_dir=args.save_results_dir,
         overwrite_results=args.overwrite_results,
@@ -424,27 +456,50 @@ def main_cli(cli_args: Optional[list] = None):
         memory_word_limit=args.memory_limit,
     )
 
-    # Play game (with checkpoint support)
     card_id = args.checkpoint if args.checkpoint else None
     resume_from_checkpoint = bool(args.checkpoint)
-    result = tester.play_game(
-        args.game_id,
-        card_id=card_id,
-        resume_from_checkpoint=resume_from_checkpoint
-    )
-    
-    if result:
-        logger.info(f"\n{'='*60}")
-        logger.info(f"Game Result: {result.game_id}")
-        logger.info(f"{'='*60}")
-        logger.info(f"Final Score: {result.final_score}")
-        logger.info(f"Final State: {result.final_state}")
-        logger.info(f"Actions Taken: {result.actions_taken}")
-        logger.info(f"Duration: {result.duration_seconds:.2f}s")
-        logger.info(f"Total Cost: ${result.total_cost.total_cost:.4f}")
-        logger.info(f"Total Tokens: {result.usage.total_tokens}")
-        logger.info(f"\nView your scorecard online: {result.scorecard_url}")
-        logger.info(f"{'='*60}\n")
+
+    def run_single_game(run_index: int) -> GameResult:
+        run_label = f"[Run {run_index + 1}/{args.num_concurrent_runs}]"
+        logger.info(f"{run_label} Starting game {args.game_id}")
+        tester = ARC3Tester(**tester_kwargs)
+        result = tester.play_game(
+            args.game_id,
+            card_id=card_id,
+            resume_from_checkpoint=resume_from_checkpoint
+        )
+        logger.info(f"{run_label} Completed with state: {result.final_state}")
+        return result
+
+    if args.num_concurrent_runs == 1:
+        result = run_single_game(0)
+        if result:
+            log_result_summary(result)
+    else:
+        logger.info(f"Starting {args.num_concurrent_runs} concurrent runs for game {args.game_id}")
+        results: List[GameResult] = []
+        failures = 0
+        with ThreadPoolExecutor(max_workers=args.num_concurrent_runs) as executor:
+            future_to_index = {
+                executor.submit(run_single_game, idx): idx
+                for idx in range(args.num_concurrent_runs)
+            }
+            for future in as_completed(future_to_index):
+                idx = future_to_index[future]
+                try:
+                    result = future.result()
+                    if result:
+                        results.append(result)
+                        log_result_summary(result, prefix=f"[Run {idx + 1}]")
+                except Exception as exc:
+                    failures += 1
+                    logger.error(f"[Run {idx + 1}] failed with error: {exc}", exc_info=True)
+
+        completed = len(results)
+        logger.info(f"Concurrent run summary: {completed} succeeded, {failures} failed.")
+        if results:
+            wins = sum(1 for r in results if r.final_state == "WIN")
+            logger.info(f"Wins: {wins}/{completed}")
     
 
 if __name__ == "__main__":
