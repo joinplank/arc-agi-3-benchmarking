@@ -56,7 +56,7 @@ class ARC3Tester:
             use_vision: Whether to use vision (images) or text-only mode
             checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable)
             close_on_exit: Close scorecard on exit even if not won (prevents checkpoint resume)
-            memory_word_limit: Maximum number of words allowed in memory scratchpad (overrides config/default)
+            memory_word_limit: Memory scratchpad word limit (overrides model config, default: from config or 500)
         """
         self.config = config
         self.model_config = read_models_config(config)

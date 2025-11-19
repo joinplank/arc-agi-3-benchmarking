@@ -239,7 +239,7 @@ class MultimodalAgent:
         retry_attempts: int = 3,
         num_plays: int = 1,
         use_vision: bool = True,
-        memory_word_limit: int = 500,
+        memory_word_limit: Optional[int] = None,
         checkpoint_frequency: int = 1,
         checkpoint_card_id: Optional[str] = None,
     ):
@@ -254,7 +254,7 @@ class MultimodalAgent:
             retry_attempts: Number of retry attempts for failed API calls
             num_plays: Number of times to play the game (continues session with memory)
             use_vision: Whether to use vision (images) or text-only mode
-            memory_word_limit: Maximum number of words allowed in memory scratchpad (default: 500)
+            memory_word_limit: Maximum number of words allowed in memory scratchpad (default: from config or 500)
             checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable)
             checkpoint_card_id: Optional card_id for checkpoint directory (defaults to card_id if not provided)
         """
@@ -264,7 +264,16 @@ class MultimodalAgent:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
-        self.memory_word_limit = memory_word_limit
+        
+        # Initialize provider adapter (needed to access model config)
+        self.provider = create_provider(config)
+        
+        # Set memory_word_limit: explicit parameter > model config > default (500)
+        if memory_word_limit is not None:
+            self.memory_word_limit = memory_word_limit
+        else:
+            self.memory_word_limit = self.provider.model_config.kwargs.get("memory_word_limit", 500)
+        
         self.checkpoint_frequency = checkpoint_frequency
 
         self.hints_file = find_hints_file()
