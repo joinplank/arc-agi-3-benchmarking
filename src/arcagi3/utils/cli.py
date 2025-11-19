@@ -139,6 +139,12 @@ def configure_main_args(parser):
         default=1,
         help="Number of times to play the game (continues session with memory on subsequent plays) (default: 1)"
     )
+    parser.add_argument(
+        "--num_concurrent_runs",
+        type=int,
+        default=1,
+        help="Number of parallel game runs to execute (default: 1)"
+    )
 
 # ============================================================================
 # CLI Configurers
