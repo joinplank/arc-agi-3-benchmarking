@@ -1,5 +1,6 @@
+from arcagi3.utils.retry import retry_with_exponential_backoff
 from .provider import ProviderAdapter
-from arcagi3.schemas import ARCTaskOutput, AttemptMetadata, Choice, Message, Usage, Cost, CompletionTokensDetails, Attempt
+from arcagi3.schemas import ARCTaskOutput, AttemptMetadata, Choice, Message, StreamResponse, Usage, Cost, CompletionTokensDetails, Attempt
 import anthropic
 import os
 from dotenv import load_dotenv
@@ -239,6 +240,126 @@ class AnthropicAdapter(ProviderAdapter):
             return json_entities['response']
         else:
             return None
+        
+    def extract_usage(self, response):
+        # Handle consumed streams
+        if isinstance(response, StreamResponse):
+            return response.prompt_tokens, response.completion_tokens
+        
+        # Check if it's an unconsumed stream
+        if 'Stream' in str(type(response)):
+            # For streams, we can't get usage info
+            # Return 0,0 for now - usage will need to be tracked differently
+            return 0, 0
+        
+        if hasattr(response, 'usage'):
+            # Anthropic format
+            if hasattr(response.usage, 'input_tokens'):
+                return response.usage.input_tokens, response.usage.output_tokens
+        return 0, 0
+    
+    def extract_content(self, response):
+        if hasattr(response, 'content') and response.content:
+            text_parts = []
+            for block in response.content:
+                if hasattr(block, 'text'):
+                    text_parts.append(block.text)
+                elif isinstance(block, dict) and block.get('type') == 'text':
+                    text_parts.append(block.get('text', ''))
+            return ''.join(text_parts)
+        logger.warning(f"Unknown response format. Type: {type(response)}")
+        return ""
+    
+    @retry_with_exponential_backoff(max_retries=3)
+    def call_provider(self, messages):
+        # Anthropic requires system messages as separate parameter, not in messages array
+        # Extract system messages and filter them out
+        system_messages = []
+        filtered_messages = []
+        
+        for msg in messages:
+            if msg.get("role") == "system":
+                # Anthropic system can be string or list of content blocks
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    system_messages.append(content)
+                elif isinstance(content, list):
+                    # Extract text from content blocks
+                    text_parts = []
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+                    if text_parts:
+                        system_messages.append("\n".join(text_parts))
+            else:
+                # Convert image blocks for Anthropic
+                msg_copy = dict(msg)
+                msg_copy["content"] = self._convert_image_blocks_for_anthropic(msg.get("content"))
+                filtered_messages.append(msg_copy)
+        
+        # Combine system messages
+        system_content = "\n".join(system_messages) if system_messages else None
+        
+        # Prepare kwargs
+        anthropic_kwargs = dict(self.model_config.kwargs)
+        if system_content:
+            anthropic_kwargs["system"] = system_content
+
+        # Stream call
+        if anthropic_kwargs.get("stream", False):
+            logger.info("Anthropic streaming enabled — consuming stream...")
+            stream_kwargs = {k: v for k, v in anthropic_kwargs.items() if k != "stream"}
+
+            with self.client.messages.stream(
+                model=self.model_config.model_name,
+                messages=filtered_messages,
+                **stream_kwargs
+            ) as stream:
+                final_message = stream.get_final_message()
+
+            logger.info("Anthropic final message received.")
+            return final_message
+
+        # Normal call
+        return self.client.messages.create(
+            model=self.model_config.model_name,
+            messages=filtered_messages,
+            **anthropic_kwargs
+        )
+    
+    def _convert_image_blocks_for_anthropic(self, content: Any) -> Any:
+        """Convert OpenAI-style image_url blocks to Anthropic format"""
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, list):
+            converted = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "image_url":
+                        # Convert from OpenAI format to Anthropic format
+                        image_url = block.get("image_url", {})
+                        url = image_url.get("url", "")
+                        
+                        # Extract base64 data from data URL
+                        if url.startswith("data:image/png;base64,"):
+                            base64_data = url[len("data:image/png;base64,"):]
+                            converted.append({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/png",
+                                    "data": base64_data
+                                }
+                            })
+                        else:
+                            # Keep as is if not base64
+                            converted.append(block)
+                    else:
+                        converted.append(block)
+                else:
+                    converted.append(block)
+            return converted
+        return content
         
 if __name__ == "__main__":
     adapter = AnthropicAdapter("claude-3-5-sonnet-20240620")

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pydantic import BaseModel, model_validator, field_validator
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
@@ -224,3 +225,14 @@ class ModelConfig(BaseModel):
                     
         return values
 
+
+# ============================================================================
+# Stream Response
+# ============================================================================
+
+@dataclass
+class StreamResponse:
+    """Wrapper for consumed stream responses"""
+    content: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0

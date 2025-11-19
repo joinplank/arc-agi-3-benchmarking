@@ -10,10 +10,9 @@ models:
     provider: "openai"
     is_multimodal: true
     api_type: "responses"
-    background: true
     reasoning:
       summary: "auto"
-    max_completion_tokens: 272000
+    max_output_tokens: 272000
     pricing:
       date: "2025-10-06"
       input: 15.00
@@ -27,8 +26,7 @@ models:
     reasoning:
       effort: "high"
       summary: "auto"
-    stream: true
-    max_completion_tokens: 200000
+    max_output_tokens: 200000
     pricing:
       date: "2025-08-07"
       input: 1.25
@@ -42,7 +40,7 @@ models:
     reasoning:
       effort: "medium"
       summary: "auto"
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 1.25
@@ -56,7 +54,7 @@ models:
     reasoning:
       effort: "low"
       summary: "auto"
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 1.25
@@ -70,7 +68,7 @@ models:
     reasoning:
       effort: "minimal"
       summary: "auto"
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 1.25
@@ -84,8 +82,7 @@ models:
     reasoning:
       effort: "high"
       summary: "auto"
-    stream: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 0.25
@@ -99,8 +96,7 @@ models:
     reasoning:
       effort: "medium"
       summary: "auto"
-    stream: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 0.25
@@ -114,7 +110,7 @@ models:
     reasoning:
       effort: "low"
       summary: "auto"
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 0.25
@@ -128,7 +124,7 @@ models:
     reasoning:
       effort: "minimal"
       summary: "auto"
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 0.25
@@ -142,8 +138,7 @@ models:
     reasoning:
       effort: "high"
       summary: "auto"
-    stream: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 0.05
@@ -157,8 +152,7 @@ models:
     reasoning:
       effort: "medium"
       summary: "auto"
-    stream: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 0.05
@@ -172,8 +166,7 @@ models:
     reasoning:
       effort: "low"
       summary: "auto"
-    stream: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 0.05
@@ -187,7 +180,7 @@ models:
     reasoning:
       effort: "minimal"
       summary: "auto"
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-08-07"
       input: 0.05
@@ -200,8 +193,7 @@ models:
     api_type: "responses"
     reasoning:
       effort: "high"
-    background: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-06-10"
       input: 20.00
@@ -214,8 +206,7 @@ models:
     api_type: "responses"
     reasoning:
       effort: "medium"
-    background: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-06-10"
       input: 20.00
@@ -228,23 +219,11 @@ models:
     api_type: "responses"
     reasoning:
       effort: "low"
-    background: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-06-10"
       input: 20.00
       output: 80.00
-
-  - name: "codex-mini-latest"
-    model_name: "codex-mini-latest"
-    provider: "openai"
-    is_multimodal: true
-    api_type: "responses"
-    max_completion_tokens: 100000
-    pricing:
-      date: "2025-05-16"
-      input: 1.50   # Standard input price; note: a cached input rate of 0.075 exists.
-      output: 6.00
 
   - name: "o3-2025-04-16-high"
     model_name: "o3-2025-04-16"
@@ -253,8 +232,7 @@ models:
     api_type: "responses"
     reasoning:
       effort: "high"
-    background: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-04-16"
       input: 2.00
@@ -268,8 +246,7 @@ models:
     reasoning:
       effort: "medium"
       # summary: "auto"
-    background: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-04-16"
       input: 2.00
@@ -283,8 +260,7 @@ models:
     reasoning:
       effort: "low"
       # summary: "auto"
-    background: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-04-16"
       input: 2.00
@@ -308,8 +284,7 @@ models:
     api_type: "responses"
     reasoning:
       effort: "high"
-    background: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-04-16"
       input: 1.10
@@ -371,7 +346,6 @@ models:
     model_name: "gpt-4o-2024-11-20"
     provider: "openai"
     is_multimodal: true
-    api_type: "responses"
     max_completion_tokens: 8000
     stream: true
     pricing:
@@ -384,7 +358,7 @@ models:
     provider: "openai"
     is_multimodal: true
     api_type: "responses"
-    max_completion_tokens: 4096
+    max_output_tokens: 4096
     pricing:
       date: "2025-05-13"
       input: 5.00   
@@ -396,26 +370,15 @@ models:
     provider: "openai"
     is_multimodal: true
     api_type: "responses"
-    max_completion_tokens: 8000
+    max_output_tokens: 8000
     pricing:
       date: "2025-03-15"
       input: 0.15   # Standard input price; note: a cached input rate of 0.075 exists.
       output: 0.60
 
-  - name: "gpt-4-5-preview-2025-02-27"
-    model_name: "gpt-4.5-preview-2025-02-27"
-    provider: "openai"
-    is_multimodal: true
-    max_completion_tokens: 10000
-    pricing:
-      date: "2025-03-15"
-      input: 75.00 
-      output: 150.00
-
   - name: "o3-mini-2025-01-31-high"
     model_name: "o3-mini-2025-01-31"
     provider: "openai"
-    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "high"
     pricing:
@@ -426,7 +389,6 @@ models:
   - name: "o3-mini-2025-01-31-medium"
     model_name: "o3-mini-2025-01-31"
     provider: "openai"
-    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "medium"
     pricing:
@@ -437,7 +399,6 @@ models:
   - name: "o3-mini-2025-01-31-low"
     model_name: "o3-mini-2025-01-31"
     provider: "openai"
-    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "low"
     pricing:
@@ -486,8 +447,7 @@ models:
     reasoning:
       effort: "high"
       # summary: "auto"
-    background: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-03-19"
       input: 150.00
@@ -501,8 +461,7 @@ models:
     reasoning:
       effort: "medium"
       # summary: "auto"
-    background: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-03-19"
       input: 150.00
@@ -516,8 +475,7 @@ models:
     reasoning:
       effort: "low"
       # summary: "auto"
-    background: true
-    max_completion_tokens: 100000
+    max_output_tokens: 100000
     pricing:
       date: "2025-03-19"
       input: 150.00
@@ -528,41 +486,12 @@ models:
     provider: "openai"
     is_multimodal: true
     api_type: "responses"
-    max_completion_tokens: 10000
+    max_output_tokens: 10000
     pricing:
       date: "2025-02-23"
       input: 15.00
       output: 60.00
 
-  - name: "gpt-4.5-2025-02-21-alpha"
-    model_name: "gpt-4.5-2025-02-21-alpha"
-    provider: "openai"
-    is_multimodal: true
-    max_completion_tokens: 4024
-    pricing:
-      date: "2025-02-23"
-      input: 75.00
-      output: 150.00
-
-  - name: "o1-preview-2024-09-12"
-    model_name: "o1-preview-2024-09-12"
-    provider: "openai"
-    is_multimodal: true
-    max_completion_tokens: 32768
-    pricing:
-      date: "2025-04-28"
-      input: 15.00
-      output: 60.00
-
-  - name: "o1-mini-2024-09-12"
-    model_name: "o1-mini-2024-09-12"
-    provider: "openai"
-    is_multimodal: true
-    max_completion_tokens: 65536
-    pricing:
-      date: "2025-04-28"
-      input: 1.10 
-      output: 4.40
 
 ###################
 #### Grok (X.AI) ####
@@ -582,7 +511,6 @@ models:
   - name: "grok-3-mini-beta"
     model_name: "grok-3-mini-beta"
     provider: "grok"
-    is_multimodal: true
     max_completion_tokens: 8192 # Assuming same context as grok-3-beta, adjust if needed
     pricing:
       date: "2025-04-28"
@@ -592,7 +520,6 @@ models:
   - name: "grok-3-mini-beta-high"
     model_name: "grok-3-mini-beta"
     provider: "grok"
-    is_multimodal: true
     max_completion_tokens: 100000 # Assuming same context as grok-3-beta, adjust if needed
     reasoning_effort: "high"
     pricing:
@@ -610,20 +537,9 @@ models:
       output: 15.00
     kwargs: {}
 
-  - name: "grok-3-openrouter"
-    model_name: "x-ai/grok-beta"
-    provider: "openrouter"
-    is_multimodal: true
-    max_tokens: 100000
-    pricing:
-      date: "2025-04-22"
-      input: 5.00
-      output: 15.00
-
   - name: "grok-3-mini-beta-low-openrouter"
     model_name: "x-ai/grok-3-mini-beta"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 100000
     extra_body:
       reasoning:
@@ -636,7 +552,6 @@ models:
   - name: "grok-3-mini-beta-high-openrouter"
     model_name: "x-ai/grok-3-mini-beta"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 100000
     extra_body:
       reasoning:
@@ -782,17 +697,6 @@ models:
       input: 3.00
       output: 15.00
 
-  - name: "claude-3-5-sonnet-20241022"
-    model_name: "claude-3-5-sonnet-20241022"
-    provider: "anthropic"
-    is_multimodal: true
-    max_tokens: 4024
-    temperature: 0.0
-    pricing:
-      date: "2025-02-23"
-      input: 3.00   # Single input price per 1M tokens.
-      output: 15.00 # Single output price per 1M tokens.
-
   - name: "claude_haiku"
     model_name: "claude-3-5-haiku-latest"
     provider: "anthropic"
@@ -898,65 +802,6 @@ models:
       input: 0.10
       output: 0.40
 
-  - name: "gemini-1-5-pro-002"
-    model_name: "gemini-1.5-pro-002"
-    provider: "gemini"
-    is_multimodal: true
-    max_output_tokens: 4024
-    pricing:
-      date: "2025-02-23"
-      input: 1.25
-      output: 5.00
-
-  - name: "gemini-2.5-pro-exp-03-25"
-    model_name: "gemini-2.5-pro-exp-03-25"
-    provider: "gemini"
-    is_multimodal: true
-    max_output_tokens: 200000
-    pricing:
-      date: "2025-03-25"
-      input: 0.00
-      output: 0.00
-
-  - name: "gemini-2-5-pro-preview-05-06"
-    model_name: "gemini-2.5-pro-preview-05-06"
-    provider: "gemini"
-    is_multimodal: true
-    max_output_tokens: 65535
-    pricing:
-      date: "2025-05-29"
-      input: 1.25
-      output: 10.00
-
-  - name: "gemini-2-5-pro-preview-05-06-thinking-1k"
-    model_name: "gemini-2.5-pro-preview-05-06"
-    provider: "gemini"
-    is_multimodal: true
-    max_output_tokens: 65535
-    thinking_config:
-      thinking_budget: 1000
-    automatic_function_calling:
-      disable: true
-    pricing:
-      date: "2025-05-29"
-      input: 1.25
-      output: 10.00
-
-  - name: "gemini-2-5-pro-preview-05-06-thinking-8k"
-    model_name: "gemini-2.5-pro-preview-05-06"
-    provider: "gemini"
-    is_multimodal: true
-    max_output_tokens: 65535
-    thinking_config:
-      thinking_budget: 8000
-    automatic_function_calling:
-      # disable: true
-      maximum_remote_calls: 50
-    pricing:
-      date: "2025-05-29"
-      input: 1.25
-      output: 10.00
-
   - name: "gemini-2-5-pro-preview-openrouter"
     model_name: "google/gemini-2.5-pro-preview"
     provider: "openrouter"
@@ -990,7 +835,6 @@ models:
   - name: "magistral-small-2506"
     model_name: "mistralai/magistral-small-2506"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 32000 # Max is 40,000. Leaving cushion for prompt
     pricing:
       date: "2025-06-12"
@@ -1000,7 +844,6 @@ models:
   - name: "magistral-medium-2506"
     model_name: "mistralai/magistral-medium-2506"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 32000 # Max is 40,000. Leaving cushion for prompt
     pricing:
       date: "2025-06-12"
@@ -1010,7 +853,6 @@ models:
   - name: "magistral-medium-2506-thinking"
     model_name: "mistralai/magistral-medium-2506:thinking"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 32000 # Max is 40,000. Leaving cushion for prompt
     pricing:
       date: "2025-06-12"
@@ -1043,60 +885,12 @@ models:
   - name: "deepseek_r1_0528-openrouter"
     model_name: "deepseek/deepseek-r1-0528"
     provider: "openrouter"
-    is_multimodal: true
     max_tokens: 130000 # Max is 163,840, leaving lots of room for prompt
     pricing:
       date: "2025-05-28"
       input: 0.50  # Cache-hit input price per 1M tokens; note: cache-miss price is 0.55.
       output: 2.18  # Output price per 1M tokens.
 
-##################
-## Hugging Face ##
-##################
-
-  - name: "QwQ-32B"
-    model_name: "Qwen/QwQ-32B"
-    provider: "huggingfacefireworks"
-    is_multimodal: true
-    max_tokens: 32768 # From HF example
-    pricing:
-      date: "2025-03-05"
-      input: 0.90   # Off Fireworks pricing page 3/5/2024
-      output: 0.90
-
-  - name: "QwQ-32B-Fireworks"
-    model_name: "accounts/fireworks/models/qwq-32b"
-    provider: "fireworks"
-    is_multimodal: true
-    max_tokens: 32768 # From HF example
-    pricing:
-      date: "2025-03-05"
-      input: 0.90   # Off Fireworks pricing page 3/5/2024
-      output: 0.90
-
-########################
-###### Fireworks ######
-########################
-
-  - name: "deepseek-r1-fireworks"
-    model_name: "accounts/fireworks/models/deepseek-r1"
-    provider: "fireworks"
-    is_multimodal: true
-    max_tokens: 32768 # From HF example
-    pricing:
-      date: "2025-03-05"
-      input: 3.00   # Off Fireworks pricing page 3/5/2024
-      output: 8.00
-
-  - name: "deepseek-v3-20250324-fireworks"
-    model_name: "accounts/fireworks/models/deepseek-v3-0324"
-    provider: "fireworks"
-    is_multimodal: true
-    max_tokens: 32768 # From HF example
-    pricing:
-      date: "2025-03-24"
-      input: 0.90   # Off Fireworks pricing page 3/5/2024
-      output: 0.90
 
 ########################
 ###### xAI ############
@@ -1118,7 +912,6 @@ models:
   - name: "grok-3-mini-xai-high"
     model_name: "grok-3-mini"
     provider: "xai"
-    is_multimodal: true
     max_completion_tokens: 100000
     reasoning_effort: "high"
     temperature: 0.7
@@ -1136,17 +929,6 @@ models:
   - name: "qwen3-235b-a22b-07-25"
     model_name: "qwen/qwen3-235b-a22b-07-25"
     provider: "openrouter"
-    is_multimodal: true
-    max_tokens: 100000
-    pricing:
-      date: "2025-07-21"
-      input: 0.12
-      output: 0.59
-
-  - name: "qwen3-235b-a22b-instruct-2507"
-    model_name: "accounts/fireworks/models/qwen3-235b-a22b-instruct-2507"
-    provider: "fireworks"
-    is_multimodal: true
     max_tokens: 100000
     pricing:
       date: "2025-07-21"

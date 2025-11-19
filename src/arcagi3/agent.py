@@ -25,19 +25,11 @@ from .schemas import (
     Cost,
     Usage,
     CompletionTokensDetails,
+    StreamResponse
 )
 from .utils.retry import retry_with_exponential_backoff
 from .utils import load_hints, find_hints_file
 from .checkpoint import CheckpointManager
-from dataclasses import dataclass
-
-
-@dataclass
-class StreamResponse:
-    """Wrapper for consumed stream responses"""
-    content: str
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
 
 
 logger = logging.getLogger(__name__)
@@ -397,11 +389,11 @@ class MultimodalAgent:
         ]
         
         try:
-            response = self._call_provider(messages)
-            prompt_tokens, completion_tokens = self._extract_usage(response)
+            response = self.provider.call_provider(messages)
+            prompt_tokens, completion_tokens = self.provider.extract_usage(response)
             self._update_costs(prompt_tokens, completion_tokens)
             
-            compressed = self._extract_content(response).strip()
+            compressed = self.provider.extract_content(response).strip()
             compressed_word_count = len(compressed.split(" ")) if compressed else 0
             logger.info(f"Compressed memory from {current_word_count} to {compressed_word_count} words")
             return compressed
@@ -507,81 +499,6 @@ class MultimodalAgent:
             logger.error(f"Failed to restore checkpoint: {e}", exc_info=True)
             return False
 
-    def _extract_usage(self, response: Any) -> tuple[int, int]:
-        """Extract token usage from provider response"""
-        # Handle consumed streams
-        if isinstance(response, StreamResponse):
-            return response.prompt_tokens, response.completion_tokens
-        
-        # Check if it's an unconsumed stream
-        if 'Stream' in str(type(response)):
-            # For streams, we can't get usage info
-            # Return 0,0 for now - usage will need to be tracked differently
-            return 0, 0
-        
-        # OpenAI format
-        if hasattr(response, 'usage'):
-            if hasattr(response.usage, 'prompt_tokens'):
-                return response.usage.prompt_tokens, response.usage.completion_tokens
-            # Anthropic format
-            elif hasattr(response.usage, 'input_tokens'):
-                return response.usage.input_tokens, response.usage.output_tokens
-        # Gemini format
-        elif hasattr(response, 'usage_metadata') and response.usage_metadata:
-            prompt_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
-            completion_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
-            return prompt_tokens, completion_tokens
-        return 0, 0
-    
-    def _extract_content(self, response: Any) -> str:
-        """Extract text content from provider response"""
-        # Handle consumed streams
-        if isinstance(response, StreamResponse):
-            return response.content
-        
-        # Check if it's an unconsumed stream - consume it first
-        if 'Stream' in str(type(response)):
-            # Consume the stream and get the final response
-            logger.debug("Consuming OpenAI stream...")
-            full_content = []
-            try:
-                for chunk in response:
-                    if hasattr(chunk, 'choices') and chunk.choices:
-                        delta = chunk.choices[0].delta
-                        if hasattr(delta, 'content') and delta.content:
-                            full_content.append(delta.content)
-                return ''.join(full_content)
-            except Exception as e:
-                logger.error(f"Error consuming stream: {e}")
-                return ""
-        
-        # OpenAI format - keep it simple like original
-        if hasattr(response, 'choices') and response.choices:
-            content = response.choices[0].message.content
-            if content is None:
-                logger.warning("OpenAI returned None content")
-                return ""
-            return content
-        # Anthropic format
-        elif hasattr(response, 'content') and response.content:
-            text_parts = []
-            for block in response.content:
-                if hasattr(block, 'text'):
-                    text_parts.append(block.text)
-                elif isinstance(block, dict) and block.get('type') == 'text':
-                    text_parts.append(block.get('text', ''))
-            return ''.join(text_parts)
-        # Gemini format
-        elif hasattr(response, 'text'):
-            text = response.text
-            if text is None:
-                logger.warning("Gemini returned None content")
-                return ""
-            return text
-        
-        logger.warning(f"Unknown response format. Type: {type(response)}")
-        return ""
-    
     def _update_costs(self, prompt_tokens: int, completion_tokens: int):
         """Update cost and usage tracking"""
         # Get pricing from model config
@@ -598,144 +515,6 @@ class MultimodalAgent:
         self.total_usage.prompt_tokens += prompt_tokens
         self.total_usage.completion_tokens += completion_tokens
         self.total_usage.total_tokens += prompt_tokens + completion_tokens
-
-    def _convert_image_blocks_for_anthropic(self, content: Any) -> Any:
-        """Convert OpenAI-style image_url blocks to Anthropic format"""
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            converted = []
-            for block in content:
-                if isinstance(block, dict):
-                    if block.get("type") == "image_url":
-                        # Convert from OpenAI format to Anthropic format
-                        image_url = block.get("image_url", {})
-                        url = image_url.get("url", "")
-                        
-                        # Extract base64 data from data URL
-                        if url.startswith("data:image/png;base64,"):
-                            base64_data = url[len("data:image/png;base64,"):]
-                            converted.append({
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/png",
-                                    "data": base64_data
-                                }
-                            })
-                        else:
-                            # Keep as is if not base64
-                            converted.append(block)
-                    else:
-                        converted.append(block)
-                else:
-                    converted.append(block)
-            return converted
-        return content
-    
-    def _consume_openai_stream(self, stream) -> StreamResponse:
-        """Consume an OpenAI stream and extract content + usage"""
-        full_content = []
-        prompt_tokens = 0
-        completion_tokens = 0
-        
-        try:
-            for chunk in stream:
-                if hasattr(chunk, 'usage') and chunk.usage:
-                    prompt_tokens = chunk.usage.prompt_tokens
-                    completion_tokens = chunk.usage.completion_tokens
-                if hasattr(chunk, 'choices') and chunk.choices:
-                    delta = chunk.choices[0].delta
-                    if hasattr(delta, 'content') and delta.content:
-                        full_content.append(delta.content)
-        except Exception as e:
-            logger.error(f"Error consuming stream: {e}")
-        
-        return StreamResponse(''.join(full_content), prompt_tokens, completion_tokens)
-    
-    @retry_with_exponential_backoff(max_retries=3)
-    def _call_provider(self, messages: List[Dict[str, Any]]) -> Any:
-        """Call provider with retry logic"""
-        # Use the provider's client directly for multimodal support
-        # Most providers follow OpenAI-style API
-        provider_name = self.provider.model_config.provider
-        
-        if provider_name == "openai":
-            kwargs = dict(self.provider.model_config.kwargs)
-            is_streaming = kwargs.get('stream', False)
-            
-            # Request usage data if streaming
-            if is_streaming:
-                kwargs['stream_options'] = {"include_usage": True}
-            
-            response = self.provider.client.chat.completions.create(
-                model=self.provider.model_config.model_name,
-                messages=messages,
-                **kwargs
-            )
-            
-            # Consume stream immediately if streaming
-            if is_streaming:
-                return self._consume_openai_stream(response)
-            
-            return response
-        elif provider_name == "anthropic":
-            # Anthropic requires system messages as separate parameter, not in messages array
-            # Extract system messages and filter them out
-            system_messages = []
-            filtered_messages = []
-            
-            for msg in messages:
-                if msg.get("role") == "system":
-                    # Anthropic system can be string or list of content blocks
-                    content = msg.get("content", "")
-                    if isinstance(content, str):
-                        system_messages.append(content)
-                    elif isinstance(content, list):
-                        # Extract text from content blocks
-                        text_parts = []
-                        for block in content:
-                            if isinstance(block, dict) and block.get("type") == "text":
-                                text_parts.append(block.get("text", ""))
-                        if text_parts:
-                            system_messages.append("\n".join(text_parts))
-                else:
-                    # Convert image blocks for Anthropic
-                    msg_copy = dict(msg)
-                    msg_copy["content"] = self._convert_image_blocks_for_anthropic(msg.get("content"))
-                    filtered_messages.append(msg_copy)
-            
-            # Combine system messages
-            system_content = "\n".join(system_messages) if system_messages else None
-            
-            # Prepare kwargs
-            anthropic_kwargs = dict(self.provider.model_config.kwargs)
-            if system_content:
-                anthropic_kwargs["system"] = system_content
-            
-            return self.provider.client.messages.create(
-                model=self.provider.model_config.model_name,
-                messages=filtered_messages,
-                **anthropic_kwargs
-            )
-        elif provider_name == "gemini":
-            # GeminiAdapter handles message conversion internally
-            return self.provider.chat_completion(messages)
-        else:
-            # For other providers, try OpenAI-compatible format
-            try:
-                return self.provider.client.chat.completions.create(
-                    model=self.provider.model_config.model_name,
-                    messages=messages,
-                    **self.provider.model_config.kwargs
-                )
-            except AttributeError:
-                # Fallback to direct client call
-                return self.provider.client.create(
-                    model=self.provider.model_config.model_name,
-                    messages=messages,
-                    **self.provider.model_config.kwargs
-                )
 
     def _analyze_previous_action(
         self,
@@ -802,14 +581,14 @@ class MultimodalAgent:
             },
         ]
         
-        response = self._call_provider(messages)
+        response = self.provider.call_provider(messages)
         
         # Track costs - handle different response formats
-        prompt_tokens, completion_tokens = self._extract_usage(response)
+        prompt_tokens, completion_tokens = self.provider.extract_usage(response)
         self._update_costs(prompt_tokens, completion_tokens)
         
         # Extract analysis and update memory
-        analysis_message = self._extract_content(response)
+        analysis_message = self.provider.extract_content(response)
         logger.info(f"Analysis: {analysis_message[:200]}...")
         before, _, after = analysis_message.partition("---")
         analysis = before.strip()
@@ -860,13 +639,14 @@ class MultimodalAgent:
             },
         ]
         
-        response = self._call_provider(messages)
+        response = self.provider.call_provider(messages)
         
         # Track costs
-        prompt_tokens, completion_tokens = self._extract_usage(response)
+        prompt_tokens, completion_tokens = self.provider.extract_usage(response)
         self._update_costs(prompt_tokens, completion_tokens)
         
-        action_message = self._extract_content(response)
+        action_message = self.provider.extract_content(response)
+
         logger.info(f"Human action: {action_message[:200]}...")
         
         try:
@@ -913,13 +693,13 @@ class MultimodalAgent:
             },
         ]
         
-        response = self._call_provider(messages)
+        response = self.provider.call_provider(messages)
         
         # Track costs
-        prompt_tokens, completion_tokens = self._extract_usage(response)
+        prompt_tokens, completion_tokens = self.provider.extract_usage(response)
         self._update_costs(prompt_tokens, completion_tokens)
         
-        action_message = self._extract_content(response)
+        action_message = self.provider.extract_content(response)
         logger.info(f"Game action: {action_message[:200]}...")
         
         try:

@@ -1,10 +1,12 @@
 import abc
+
+from arcagi3.utils.retry import retry_with_exponential_backoff
 from .provider import ProviderAdapter
 from dotenv import load_dotenv
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice as OpenAIChoice
 from openai.types import CompletionUsage
-from arcagi3.schemas import APIType, Cost, Attempt, Usage, CompletionTokensDetails
+from arcagi3.schemas import APIType, Cost, Attempt, StreamResponse, Usage, CompletionTokensDetails
 from arcagi3.errors import TokenMismatchError
 from typing import Optional, Any, List, Dict
 from time import sleep
@@ -461,3 +463,80 @@ class OpenAIBaseAdapter(ProviderAdapter, abc.ABC):
             reasoning_cost=reasoning_cost,   # Cost of reasoning part
             total_cost=total_cost,           # True total expenditure
         ) 
+
+    def extract_usage(self, response):
+        # Handle consumed streams
+        if isinstance(response, StreamResponse):
+            return response.prompt_tokens, response.completion_tokens
+        
+        # Check if it's an unconsumed stream
+        if 'Stream' in str(type(response)):
+            # For streams, we can't get usage info
+            # Return 0,0 for now - usage will need to be tracked differently
+            return 0, 0
+        
+        # OpenAI format
+        if hasattr(response, 'usage'):
+            if hasattr(response.usage, 'prompt_tokens'):
+                return response.usage.prompt_tokens, response.usage.completion_tokens
+        return 0, 0
+    
+    def extract_content(self, response):
+         # Check if it's an OpenAI stream - consume it first
+        if hasattr(response, "output"):
+            texts = []
+            for item in response.output:
+                # Skip thinking blocks (reasoning)
+                if getattr(item, "type", None) == "reasoning":
+                    continue
+
+                # Assistant message
+                if getattr(item, "type", None) == "message":
+                    if hasattr(item, "content"):
+                        for part in item.content:
+                            if getattr(part, "type", None) == "output_text":
+                                texts.append(part.text or "")
+            return "\n".join(texts).strip()
+
+        if 'Stream' in str(type(response)):
+            # Consume the stream and get the final response
+            logger.debug("Consuming OpenAI stream...")
+            full_content = []
+            try:
+                for chunk in response:
+                    if hasattr(chunk, 'choices') and chunk.choices:
+                        delta = chunk.choices[0].delta
+                        if hasattr(delta, 'content') and delta.content:
+                            full_content.append(delta.content)
+                return ''.join(full_content)
+            except Exception as e:
+                logger.error(f"Error consuming stream: {e}")
+                return ""
+        
+        # OpenAI format - keep it simple like original
+        if hasattr(response, 'choices') and response.choices:
+            content = response.choices[0].message.content
+            if content is None:
+                logger.warning("OpenAI returned None content")
+                return ""
+            return content
+        
+        logger.warning(f"Unknown response format. Type: {type(response)}")
+        return ""
+    
+    @retry_with_exponential_backoff(max_retries=3)
+    def call_provider(self, messages):
+        # For other providers, try OpenAI-compatible format
+        try:
+            return self.client.chat.completions.create(
+                model=self.model_config.model_name,
+                messages=messages,
+                **self.model_config.kwargs
+            )
+        except AttributeError:
+            # Fallback to direct client call
+            return self.client.create(
+                model=self.model_config.model_name,
+                messages=messages,
+                **self.model_config.kwargs
+            )

@@ -1,3 +1,4 @@
+from arcagi3.utils.retry import retry_with_exponential_backoff
 from .provider import ProviderAdapter
 import os
 import base64
@@ -9,7 +10,7 @@ from google.genai import types
 
 from typing import List, Optional
 from datetime import datetime, timezone
-from arcagi3.schemas import ARCTaskOutput, AttemptMetadata, Choice, Message, Usage, Cost, CompletionTokensDetails, Attempt
+from arcagi3.schemas import ARCTaskOutput, AttemptMetadata, Choice, Message, StreamResponse, Usage, Cost, CompletionTokensDetails, Attempt
 import logging
 
 load_dotenv()
@@ -309,3 +310,36 @@ class GeminiAdapter(ProviderAdapter):
         except Exception as e:
             logger.error(f"Error in extract_json_from_response with google.genai: {e}")
             return None
+        
+    def extract_usage(self, response):
+        # Handle consumed streams
+        if isinstance(response, StreamResponse):
+            return response.prompt_tokens, response.completion_tokens
+        
+        # Check if it's an unconsumed stream
+        if 'Stream' in str(type(response)):
+            # For streams, we can't get usage info
+            # Return 0,0 for now - usage will need to be tracked differently
+            return 0, 0
+        
+        # Gemini format
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            prompt_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+            completion_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+            return prompt_tokens, completion_tokens
+        return 0, 0
+    
+    def extract_content(self, response):
+        if hasattr(response, 'text'):
+            text = response.text
+            if text is None:
+                logger.warning("Gemini returned None content")
+                return ""
+            return text
+        logger.warning(f"Unknown response format. Type: {type(response)}")
+        return ""
+    
+    @retry_with_exponential_backoff(max_retries=3)
+    def call_provider(self, messages):
+        # GeminiAdapter handles message conversion internally
+        return self.chat_completion(messages)

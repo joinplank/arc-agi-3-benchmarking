@@ -60,3 +60,24 @@ class ProviderAdapter(abc.ABC):
         Extract JSON from various possible formats in the response
         """
         pass
+
+    @abc.abstractmethod
+    def extract_usage(self, response: Any) -> tuple[int, int]:
+        """
+        Extract token usage from provider response
+        """
+        pass
+
+    @abc.abstractmethod
+    def extract_content(self, response: Any) -> str:
+        """
+        Extract text content from provider response
+        """
+        pass
+
+    @abc.abstractmethod
+    def call_provider(self, messages: List[Dict[str, Any]]) -> Any:
+         """
+         Call provider with retry logic
+         """
+         pass
