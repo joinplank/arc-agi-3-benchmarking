@@ -32,7 +32,8 @@ python main.py \
 - **Memory Management** - Scratchpad-based memory with automatic compression
 - **Multi-Play Sessions** - Continue learning across multiple attempts
 - **Hints System** - Optional game-specific guidance via YAML configuration
-- **Batch Processing** - Run multiple games sequentially or in parallel with rate limiting
+- **Batch Processing** - Run multiple games concurrently
+- **Concurrent Execution** - Parallel game runs with per-game logging and thread-safe execution
 - **Terminal Visualization** - Display game frames as colored blocks during gameplay
 
 ## Installation
@@ -109,16 +110,35 @@ This renders each frame as colored blocks in your terminal, useful for debugging
 
 ### Run Multiple Games (Batch Processing)
 
-```bash
-# Specific games
-python -m arcagi3.cli \
-  --games "game1,game2,game3" \
-  --config "claude-sonnet-4-5-20250929"
+Run multiple games at the same time with automatic per-game log files:
 
-# All games (sequential)
+```bash
+# Run specific games concurrently
+python -m arcagi3.cli \
+  --games "ls20-fa137e247ce6,ft09-16726c5b26ff,ls20-016295f7601e" \
+  --config "gpt-4o-mini-2024-07-18"
+
+# Run all available games concurrently
 python -m arcagi3.cli \
   --all-games \
-  --config "gpt-4o-2024-11-20"
+  --config "claude-sonnet-4-5-20250929"
+```
+
+**Concurrent Execution Features:**
+- All games run in parallel using threads (max: number of games)
+- Each game gets its own log file in `logs/<config>/concurrent_<timestamp>/`
+- Separate thread-safe execution for each game
+- Complete summary with aggregate statistics at the end
+- Scorecard URLs for all games printed together
+
+**Example output structure:**
+```
+logs/
+└── gpt-4o-mini-2024-07-18/
+    └── concurrent_20251119_143528/
+        ├── ls20-fa137e247ce6.log
+        ├── ft09-16726c5b26ff.log
+        └── ls20-016295f7601e.log
 ```
 
 ### Checkpoint & Resume
@@ -582,7 +602,10 @@ results/
 1. Test single game first: `python main.py --game_id "..." --config "..."`
 2. If promising, run on more games: `python -m arcagi3.cli --games "id1,id2,id3"`
 3. For full evaluation: `python -m arcagi3.cli --all-games`
-4. For parallel execution: `python cli/run_all.py --max_concurrent 5`
+4. For concurrent execution: Games automatically run in parallel when using `arcagi3.cli`
+   - Check per-game logs in `logs/<config>/concurrent_<timestamp>/`
+   - View aggregate statistics after all games complete
+5. For advanced parallel execution across models: `python cli/run_all.py --game_ids "..." --model_configs "model1,model2"`
 
 ### Hints Optimization
 - Create `hints.yml` with game-specific guidance
