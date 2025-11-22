@@ -15,7 +15,7 @@ from PIL import Image
 
 from .adapters import create_provider
 from .game_client import GameClient
-from .image_utils import grid_to_image, image_to_base64, make_image_block, image_diff
+from .utils.image import grid_to_image, image_to_base64, make_image_block, image_diff, display_image_in_terminal
 from .schemas import (
     GameAction,
     GameState,
@@ -109,7 +109,7 @@ class MultimodalAgent:
         play the game better. You can structure it however you want - it's your scratchpad
         to use as you see fit. IMPORTANT: The memory scratchpad should be plain text.
         Use natural language, bullet points, or any text format you prefer. Keep the memory 
-        scratchpad concise and within approximately 500 words to help manage context window size. 
+        scratchpad concise and within approximately {memory_limit} words to help manage context window size. 
         Focus on what's most important for understanding the game environment and rules to beat 
         the game in as few moves as possible.
         ---
@@ -138,8 +138,9 @@ class MultimodalAgent:
         max_actions: int = 40,
         retry_attempts: int = 3,
         num_plays: int = 1,
+        show_images: bool = False,
         use_vision: bool = True,
-        memory_word_limit: int = 500,
+        memory_word_limit: Optional[int] = None,
         checkpoint_frequency: int = 1,
         checkpoint_card_id: Optional[str] = None,
     ):
@@ -153,8 +154,9 @@ class MultimodalAgent:
             max_actions: Maximum actions to take before stopping
             retry_attempts: Number of retry attempts for failed API calls
             num_plays: Number of times to play the game (continues session with memory)
+            show_images: Whether to display game frames in the terminal
             use_vision: Whether to use vision (images) or text-only mode
-            memory_word_limit: Maximum number of words allowed in memory scratchpad (default: 500)
+            memory_word_limit: Maximum number of words allowed in memory scratchpad (default: from config or 500)
             checkpoint_frequency: Save checkpoint every N actions (default: 1, 0 to disable)
             checkpoint_card_id: Optional card_id for checkpoint directory (defaults to card_id if not provided)
         """
@@ -164,7 +166,17 @@ class MultimodalAgent:
         self.max_actions = max_actions
         self.retry_attempts = retry_attempts
         self.num_plays = num_plays
-        self.memory_word_limit = memory_word_limit
+        self.show_images = show_images
+        
+        # Initialize provider adapter (needed to access model config)
+        self.provider = create_provider(config)
+        
+        # Set memory_word_limit: explicit parameter > model config > default (500)
+        if memory_word_limit is not None:
+            self.memory_word_limit = memory_word_limit
+        else:
+            self.memory_word_limit = self.provider.model_config.kwargs.get("memory_word_limit", 500)
+        
         self.checkpoint_frequency = checkpoint_frequency
 
         self.hints_file = find_hints_file()
@@ -210,6 +222,7 @@ class MultimodalAgent:
         self._previous_action: Optional[Dict[str, Any]] = None
         self._previous_images: List[Image.Image] = []
         self._previous_grids: List[List[List[int]]] = []  # Store raw grids for text-based providers
+        self._resumed_current_grids: Optional[List[List[List[int]]]] = None # Store current grids from resumed checkpoint
         self._previous_score = 0
 
         self._previous_prompt = ""
@@ -371,6 +384,7 @@ class MultimodalAgent:
             self._previous_action = state["previous_action"]
             self._previous_images = state["previous_images"]
             self._previous_grids = state.get("previous_grids", [])
+            self._resumed_current_grids = state.get("current_grids", [])
 
             logger.info(
                 f"Restored checkpoint: game_id={self.current_game_id}, "
@@ -415,7 +429,7 @@ class MultimodalAgent:
         if current_score > self._previous_score:
             level_complete = "NEW LEVEL!!!! - Whatever you did must have been good!"
         
-        analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT}\n\n{self._get_memory_with_actions()}"
+        analyze_prompt = f"{level_complete}\n\n{self.ANALYZE_INSTRUCT.format(memory_limit=self.memory_word_limit)}\n\n{self._get_memory_with_actions()}"
         
         if self._model_supports_vision and self._use_vision:
             # For multimodal providers, use images
@@ -756,7 +770,7 @@ class MultimodalAgent:
                         "guid": guid,
                         "score": current_score,
                         "state": current_state,
-                        "frame": self._previous_grids if self._previous_grids else []
+                        "frame": restored_frame if restored_frame else []
                     }
                     logger.info(f"Continuing session with guid: {guid}, score: {current_score}")
                 

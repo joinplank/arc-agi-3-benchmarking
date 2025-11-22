@@ -97,6 +97,41 @@ def make_image_block(b64_string: str) -> dict:
     }
 
 
+def display_image_in_terminal(img: Image.Image, width: int = 32) -> None:
+    """
+    Display an image in the terminal using Unicode blocks and ANSI colors.
+
+    Args:
+        img: PIL Image to display
+        width: Display width in characters (default: 32)
+    """
+    # Calculate height maintaining aspect ratio
+    aspect_ratio = img.height / img.width
+    height = int(width * aspect_ratio / 2)  # /2 because terminal chars are taller
+
+    # Resize image to fit terminal
+    img_resized = img.resize((width, height * 2), Image.NEAREST)
+    pixels = np.array(img_resized.convert("RGB"))
+
+    # Use half blocks: top half and bottom half
+    for y in range(0, height * 2, 2):
+        line = ""
+        for x in range(width):
+            # Get top and bottom pixel colors
+            top_pixel = pixels[y, x] if y < pixels.shape[0] else [0, 0, 0]
+            bottom_pixel = pixels[y + 1, x] if y + 1 < pixels.shape[0] else [0, 0, 0]
+
+            # Convert RGB to ANSI color codes
+            top_r, top_g, top_b = top_pixel
+            bottom_r, bottom_g, bottom_b = bottom_pixel
+
+            # Use lower half block (▄) with top color as background, bottom as foreground
+            line += f"\033[38;2;{bottom_r};{bottom_g};{bottom_b}m\033[48;2;{top_r};{top_g};{top_b}m▄\033[0m"
+
+        print(line)
+    print("\033[0m")  # Reset colors
+
+
 def image_diff(
     img_a: Image.Image,
     img_b: Image.Image,
