@@ -29,6 +29,8 @@ from .schemas import (
 )
 from .utils.retry import retry_with_exponential_backoff
 from .utils import load_hints, find_hints_file
+from .utils.formatting import get_human_inputs_text, grid_to_text_matrix
+from .utils.parsing import extract_json_from_response
 from .checkpoint import CheckpointManager
 
 
@@ -49,109 +51,7 @@ HUMAN_ACTIONS = {
 
 HUMAN_ACTIONS_LIST = list(HUMAN_ACTIONS.keys())
 
-def get_human_inputs_text(available_actions: List[str]) -> str:
-    """Convert available actions to human-readable text"""
-    text = "\n"
-    for action in available_actions:
-        if action in HUMAN_ACTIONS:
-            text += f"{HUMAN_ACTIONS[action]}\n"
-    return text
-
-
-def grid_to_text_matrix(grid: List[List[int]]) -> str:
-    """
-    Convert a grid matrix to a readable text representation.
-    
-    Args:
-        grid: 64x64 grid of integers (0-15) representing colors
-        
-    Returns:
-        Formatted text representation of the grid
-    """
-    # Format as JSON for clarity and compactness
-    return json.dumps(grid, separators=(',', ','))
-
-
-def extract_json_from_response(response_text: str) -> Dict[str, Any]:
-    """
-    Extract JSON from various possible formats in the response.
-    
-    Handles:
-    - Bare JSON { ... }
-    - Fenced JSON ```json ... ```
-    - Generic fence ``` ... ```
-    - Wrapper text
-    """
-    import re
-    
-    if not response_text or not response_text.strip():
-        raise ValueError("Empty response text")
-    
-    # Try fenced ```json ... ``` blocks (with better regex for multiline)
-    fence = re.search(r"```json\s*(\{.*?\})\s*```", response_text, re.S | re.I | re.M)
-    if fence:
-        json_str = fence.group(1).strip()
-    else:
-        # Try any ``` ... ``` fence
-        fence = re.search(r"```[a-z]*\s*(\{.*?\})\s*```", response_text, re.S | re.M)
-        if fence:
-            json_str = fence.group(1).strip()
-        else:
-            # Fallback: find the first '{' and match balanced braces
-            start = response_text.find("{")
-            if start == -1:
-                raise ValueError(f"No JSON object detected in response. Response was: {response_text[:200]}")
-            
-            # Find matching closing brace, skipping strings to avoid false matches
-            brace_count = 0
-            end = start
-            in_string = False
-            escape_next = False
-            
-            for i in range(start, len(response_text)):
-                char = response_text[i]
-                
-                if escape_next:
-                    escape_next = False
-                    continue
-                
-                if char == '\\':
-                    escape_next = True
-                    continue
-                
-                if char == '"' and not in_string:
-                    in_string = True
-                elif char == '"' and in_string:
-                    in_string = False
-                elif not in_string:
-                    if char == '{':
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            end = i
-                            break
-            
-            if brace_count != 0:
-                # If we couldn't find balanced braces, the JSON might be truncated
-                # Try to get what we have and let json.loads fail with a better error
-                logger.warning(f"Unbalanced braces in JSON (count: {brace_count}). JSON might be truncated.")
-                json_str = response_text[start:].strip()
-                # Try to close the JSON
-                json_str = json_str.rstrip() + "}"
-            else:
-                json_str = response_text[start : end + 1].strip()
-    
-    try:
-        return json.loads(json_str)
-    except json.JSONDecodeError as e:
-        # Clean control characters and try again
-        try:
-            import unicodedata
-            cleaned = ''.join(char if unicodedata.category(char)[0] != 'C' or char in '\n\r\t' else ' ' for char in json_str)
-            return json.loads(cleaned)
-        except json.JSONDecodeError:
-            raise ValueError(f"Failed to parse JSON: {e}. JSON string was: {json_str[:200]}")
+HUMAN_ACTIONS_LIST = list(HUMAN_ACTIONS.keys())
 
 
 class MultimodalAgent:
@@ -430,28 +330,13 @@ class MultimodalAgent:
             self._memory_prompt = self._truncate_memory()
 
     def save_checkpoint(self):
-        """Save current agent state to checkpoint"""
+        """Save current state to checkpoint"""
+        if self.checkpoint_frequency == 0:
+            return
+            
         try:
-            self.checkpoint_manager.save_state(
-                config=self.config,
-                game_id=self.current_game_id,
-                guid=self._current_guid,
-                max_actions=self.max_actions,
-                retry_attempts=self.retry_attempts,
-                num_plays=self.num_plays,
-                action_counter=self.action_counter,
-                total_cost=self.total_cost,
-                total_usage=self.total_usage,
-                action_history=self.action_history,
-                memory_prompt=self._memory_prompt,
-                previous_action=self._previous_action,
-                previous_images=self._previous_images,
-                previous_score=self._previous_score,
-                current_play=self._current_play,
-                play_action_counter=self._play_action_counter,
-                use_vision=self._use_vision,
-                previous_grids=self._previous_grids,
-            )
+            state = self.get_state()
+            self.checkpoint_manager.save_state(state)
         except Exception as e:
             logger.error(f"Failed to save checkpoint: {e}", exc_info=True)
 
@@ -657,6 +542,42 @@ class MultimodalAgent:
             # Re-raise to be caught by game loop
             raise
     
+    def step(
+        self,
+        frame_images: List[Image.Image],
+        frame_grids: List[List[List[int]]],
+        current_score: int
+    ) -> Dict[str, Any]:
+        """
+        Perform one cognitive step: Analyze -> Decide -> Convert.
+        
+        Args:
+            frame_images: List of images for the current state
+            frame_grids: List of grid matrices for the current state
+            current_score: Current game score
+            
+        Returns:
+            Game action dictionary ready for execution
+        """
+        # 1. Analyze previous action results
+        analysis = self._analyze_previous_action(frame_images, frame_grids, current_score)
+        
+        # 2. Decide on next human action
+        human_action_dict = self._choose_human_action(frame_images, frame_grids, analysis)
+        human_action = human_action_dict.get("human_action")
+        
+        if not human_action:
+            raise ValueError("No human_action in response")
+            
+        # 3. Convert to game action
+        game_action_dict = self._convert_to_game_action(human_action, frame_images[-1], frame_grids[-1])
+        
+        # Merge reasoning from human action into game action for tracking
+        game_action_dict["human_action_dict"] = human_action_dict
+        game_action_dict["analysis"] = analysis
+        
+        return game_action_dict
+
     def _convert_to_game_action(
         self,
         human_action: str,
@@ -664,7 +585,11 @@ class MultimodalAgent:
         last_frame_grid: List[List[int]]
     ) -> Dict[str, Any]:
         """Convert human action description to game action"""
-        available_actions = [f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
+        # Format available actions for the prompt
+        available_actions_text = "\n".join([
+            f"{HUMAN_ACTIONS_LIST[int(a) - 1]} = {HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" 
+            for a in self._available_actions
+        ])
         
         content = []
         if self._model_supports_vision and self._use_vision:
@@ -682,7 +607,7 @@ class MultimodalAgent:
             )
         content.append({
             "type": "text",
-            "text": human_action + "\n\n" + self.FIND_ACTION_INSTRUCT.replace("{{action_list}}", "\n".join(available_actions)),
+            "text": human_action + "\n\n" + self.FIND_ACTION_INSTRUCT.replace("{{action_list}}", available_actions_text),
         })
         
         messages = [
@@ -728,6 +653,34 @@ class MultimodalAgent:
         
         return self.game_client.execute_action(action_name, data)
     
+    def get_state(self) -> Dict[str, Any]:
+        """Returns serializable agent state for checkpointing."""
+        return {
+            "metadata": {
+                "config": self.config,
+                "game_id": self.current_game_id,
+                "guid": self._current_guid,
+                "max_actions": self.max_actions,
+                "retry_attempts": self.retry_attempts,
+                "num_plays": self.num_plays,
+                "action_counter": self.action_counter,
+                "current_play": self._current_play,
+                "play_action_counter": self._play_action_counter,
+                "previous_score": self._previous_score,
+            },
+            "memory": {
+                "prompt": self._memory_prompt,
+                "previous_action": self._previous_action,
+                "previous_images": self._previous_images,
+                "previous_grids": self._previous_grids,
+            },
+            "metrics": {
+                "total_cost": self.total_cost,
+                "total_usage": self.total_usage,
+                "action_history": self.action_history,
+            }
+        }
+
     def play_game(self, game_id: str, resume_from_checkpoint: bool = False) -> GameResult:
         """
         Play a complete game and return results.
@@ -785,20 +738,20 @@ class MultimodalAgent:
             if play_num > 1:
                 logger.info(f"Starting play {play_num}/{self.num_plays} (continuing session with memory)")
             
+            # Initialize session state
+            session_restored = False
+            state = {}
+            
             # Skip reset if resuming from checkpoint in the middle of a play
             if resume_from_checkpoint and play_num == start_play and self._play_action_counter > 0:
                 logger.info(f"Resuming play {play_num} at action {self._play_action_counter}")
-                # Try to continue from existing session with guid (WITHOUT calling reset)
-                session_restored = False
-
-                # Use the saved GUID directly and continue without reset
+                
                 if self._current_guid:
                     guid = self._current_guid
                     current_score = self._previous_score
                     current_state = "IN_PROGRESS"
                     session_restored = True
-                    # Create a minimal state structure - will be updated after first action
-                    # Use previous grids if available (for resumed sessions)
+                    # Create a minimal state structure using previous grids
                     state = {
                         "guid": guid,
                         "score": current_score,
@@ -806,152 +759,48 @@ class MultimodalAgent:
                         "frame": self._previous_grids if self._previous_grids else []
                     }
                     logger.info(f"Continuing session with guid: {guid}, score: {current_score}")
-                    logger.info(f"Resuming from action {self._play_action_counter} (no reset sent)")
-
+                
                 if not session_restored:
-                    # If we don't have a GUID for some reason, reset with memory
                     logger.info("No GUID found, starting new game session with restored memory...")
                     state = self.game_client.reset_game(self.card_id, game_id, guid=None)
                     guid = state.get("guid")
                     current_score = state.get("score", 0)
                     current_state = state.get("state", "IN_PROGRESS")
-                    logger.info(f"New session started (guid: {guid}, keeping {self.action_counter} actions in memory)")
-
+                
                 play_action_counter = self._play_action_counter if session_restored else 0
-
-                # Reconstruct play_action_history from self.action_history for this play
-                # Actions for this play have action_num from (action_counter - play_action_counter + 1) to action_counter
-                if session_restored and play_action_counter > 0:
-                    start_action_num = self.action_counter - play_action_counter + 1
-                    end_action_num = self.action_counter
-                    play_action_history: List[GameActionRecord] = [
-                        action for action in self.action_history
-                        if start_action_num <= action.action_num <= end_action_num
-                    ]
-                    logger.info(f"Reconstructed {len(play_action_history)} action(s) for current play from checkpoint")
-                else:
-                    # Session not restored or no actions yet in this play
-                    play_action_history: List[GameActionRecord] = []
-
-                resume_from_checkpoint = False  # Only skip reset once
+                resume_from_checkpoint = False
             else:
-                # Reset game (use guid to continue session if not first play)
+                # Reset game
                 state = self.game_client.reset_game(self.card_id, game_id, guid=guid)
                 guid = state.get("guid")
                 current_score = state.get("score", 0)
                 current_state = state.get("state", "IN_PROGRESS")
-
-                # Initialize memory only on first play, otherwise keep existing memory
+                
+                # Initialize memory on first play
                 if play_num == 1 and not self._memory_prompt:
                     self._available_actions = state.get("available_actions", list(HUMAN_ACTIONS.keys()))
                     available_codes = [f"{HUMAN_ACTIONS[HUMAN_ACTIONS_LIST[int(a) - 1]]}" for a in self._available_actions]
                     self._initialize_memory(available_codes)
-                else:
-                    logger.info(f"Continuing with memory from previous play(s)")
-
-                # Reset play-specific counters (but keep cumulative cost/usage)
+                
                 play_action_counter = 0
-                play_action_history: List[GameActionRecord] = []
 
             # Store guid
             self._current_guid = guid
             self._play_action_counter = play_action_counter
             
-            # Main game loop
-            while (
-                current_state not in ["WIN", "GAME_OVER"]
-                and play_action_counter < self.max_actions
-            ):
-                try:
-                    frames = state.get("frame", [])
-                    if not frames:
-                        logger.warning("No frames in state, breaking")
-                        break
-                    
-                    # Store raw grids and convert to images
-                    frame_grids = frames  # frames are already grid matrices from API
-                    frame_images = [grid_to_image(frame) for frame in frames]
-                    
-                    analysis = self._analyze_previous_action(frame_images, frame_grids, current_score)
-                    
-                    human_action_dict = self._choose_human_action(frame_images, frame_grids, analysis)
-                    human_action = human_action_dict.get("human_action")
-                    
-                    if not human_action:
-                        logger.error("No human_action in response")
-                        break
-                    
-                    game_action_dict = self._convert_to_game_action(human_action, frame_images[-1], frame_grids[-1])
-                    action_name = game_action_dict.get("action")
-                    
-                    if not action_name:
-                        logger.error("No action name in response")
-                        break
-                    
-                    action_data_dict = {}
-                    if action_name == "ACTION6":
-                        x = game_action_dict.get("x", 0)
-                        y = game_action_dict.get("y", 0)
-                        action_data_dict = {
-                            "x": max(0, min(x, 127)) // 2,
-                            "y": max(0, min(y, 127)) // 2,
-                        }
-                    
-                    action_field = action_name
-                    if action_name == "ACTION6" and action_data_dict:
-                        action_field = f"{action_name}: [{action_data_dict}]"
-
-                    reasoning_for_api = {
-                        "analysis": analysis[:1000] if len(analysis) > 1000 else analysis,
-                        "action": action_field,
-                        "human_action": human_action,
-                        "reasoning": (human_action_dict.get("reasoning", "") or "")[:300],
-                        "expected": (human_action_dict.get("expected_result", "") or "")[:300],
-                        "tokens:": [self.total_usage.prompt_tokens, self.total_usage.completion_tokens],
-                    }
-                    state = self._execute_game_action(action_name, action_data_dict, game_id, guid, reasoning_for_api)
-                    guid = state.get("guid", guid)
-                    new_score = state.get("score", current_score)
-                    current_state = state.get("state", "IN_PROGRESS")
-                    
-                    self.action_counter += 1
-                    action_record = GameActionRecord(
-                        action_num=self.action_counter,
-                        action=action_name,
-                        action_data=ActionData(**action_data_dict) if action_data_dict else None,
-                        reasoning={
-                            "human_action": human_action,
-                            "reasoning": human_action_dict.get("reasoning", ""),
-                            "expected": human_action_dict.get("expected_result", ""),
-                            "analysis": analysis[:500] if len(analysis) > 500 else analysis,
-                        },
-                        result_score=new_score,
-                        result_state=current_state,
-                    )
-                    play_action_history.append(action_record)
-                    self.action_history.append(action_record)
-                    
-                    self._previous_action = human_action_dict
-                    self._previous_images = frame_images
-                    self._previous_grids = frame_grids
-                    self._previous_score = current_score
-                    current_score = new_score
-                    play_action_counter += 1
-                    self._play_action_counter = play_action_counter
-
-                    logger.info(
-                        f"Play {play_num}, Action {play_action_counter}: {action_name}, "
-                        f"Score: {current_score}, State: {current_state}"
-                    )
-
-                    # Save checkpoint periodically
-                    if self.checkpoint_frequency > 0 and play_action_counter % self.checkpoint_frequency == 0:
-                        logger.info(f"Saving checkpoint at action {play_action_counter}")
-                        self.save_checkpoint()
-
-                except Exception as e:
-                    logger.error(f"Error during game loop: {e}", exc_info=True)
-                    break
+            # --- Run Game Session ---
+            # We pass the initial state to the session runner
+            session_result = self._run_session_loop(
+                game_id=game_id,
+                initial_state=state,
+                play_num=play_num,
+                start_action_counter=play_action_counter
+            )
+            
+            current_score = session_result["score"]
+            current_state = session_result["state"]
+            play_action_counter = session_result["actions_taken"]
+            play_action_history = session_result["action_history"]
             
             play_duration = time.time() - play_start_time
             scorecard_url = f"{self.game_client.ROOT_URL}/scorecards/{self.card_id}"
@@ -976,7 +825,7 @@ class MultimodalAgent:
                 f"Score: {current_score}, Actions: {play_action_counter}"
             )
             
-            # Track best result (WIN > highest score)
+            # Track best result
             if best_result is None:
                 best_result = play_result
             elif current_state == "WIN" and best_result.final_state != "WIN":
@@ -987,10 +836,9 @@ class MultimodalAgent:
             elif current_score > best_result.final_score:
                 best_result = play_result
 
-            # Save checkpoint after play completes
+            # Save checkpoint after play
             self.save_checkpoint()
 
-            # Stop if we won or no more plays
             if current_state == "WIN":
                 logger.info(f"Game won on play {play_num}! Stopping early.")
                 break
@@ -1010,10 +858,144 @@ class MultimodalAgent:
             f"Cost: ${self.total_cost.total_cost:.4f}"
         )
 
-        # Clean up checkpoint on successful completion
         if best_result.final_state == "WIN":
             logger.info("Game won, deleting checkpoint")
             self.checkpoint_manager.delete_checkpoint()
 
         return best_result
+
+    def _run_session_loop(
+        self,
+        game_id: str,
+        initial_state: Dict[str, Any],
+        play_num: int,
+        start_action_counter: int
+    ) -> Dict[str, Any]:
+        """
+        Run the inner game loop for a single session.
+        """
+        state = initial_state
+        guid = state.get("guid")
+        current_score = state.get("score", 0)
+        current_state = state.get("state", "IN_PROGRESS")
+        play_action_counter = start_action_counter
+        
+        play_action_history: List[GameActionRecord] = []
+        
+        # Reconstruct history if resuming
+        if guid and play_action_counter > 0:
+            start_action_num = self.action_counter - play_action_counter + 1
+            end_action_num = self.action_counter
+            play_action_history = [
+                action for action in self.action_history
+                if start_action_num <= action.action_num <= end_action_num
+            ]
+        
+        while (
+            current_state not in ["WIN", "GAME_OVER"]
+            and play_action_counter < self.max_actions
+        ):
+            try:
+                frames = state.get("frame", [])
+                if not frames:
+                    logger.warning("No frames in state, breaking")
+                    break
+                
+                # Store raw grids and convert to images
+                frame_grids = frames
+                frame_images = [grid_to_image(frame) for frame in frames]
+                
+                # A single step of the game
+                try:
+                    game_action_dict = self.step(frame_images, frame_grids, current_score)
+                except ValueError as e:
+                    logger.error(f"Step failed: {e}")
+                    break
+                
+                action_name = game_action_dict.get("action")
+                if not action_name:
+                    logger.error("No action name in response")
+                    break
+                
+                # Extract action data
+                action_data_dict = {}
+                if action_name == "ACTION6":
+                    x = game_action_dict.get("x", 0)
+                    y = game_action_dict.get("y", 0)
+                    action_data_dict = {
+                        "x": max(0, min(x, 127)) // 2,
+                        "y": max(0, min(y, 127)) // 2,
+                    }
+                
+                # Prepare reasoning for API
+                human_action_dict = game_action_dict.get("human_action_dict", {})
+                analysis = game_action_dict.get("analysis", "")
+                human_action = human_action_dict.get("human_action", "")
+                
+                action_field = action_name
+                if action_name == "ACTION6" and action_data_dict:
+                    action_field = f"{action_name}: [{action_data_dict}]"
+
+                reasoning_for_api = {
+                    "analysis": analysis[:1000] if len(analysis) > 1000 else analysis,
+                    "action": action_field,
+                    "human_action": human_action,
+                    "reasoning": (human_action_dict.get("reasoning", "") or "")[:300],
+                    "expected": (human_action_dict.get("expected_result", "") or "")[:300],
+                    "tokens:": [self.total_usage.prompt_tokens, self.total_usage.completion_tokens],
+                }
+                
+                # Execute action
+                state = self._execute_game_action(action_name, action_data_dict, game_id, guid, reasoning_for_api)
+                guid = state.get("guid", guid)
+                new_score = state.get("score", current_score)
+                current_state = state.get("state", "IN_PROGRESS")
+                
+                # Update tracking
+                self.action_counter += 1
+                action_record = GameActionRecord(
+                    action_num=self.action_counter,
+                    action=action_name,
+                    action_data=ActionData(**action_data_dict) if action_data_dict else None,
+                    reasoning={
+                        "human_action": human_action,
+                        "reasoning": human_action_dict.get("reasoning", ""),
+                        "expected": human_action_dict.get("expected_result", ""),
+                        "analysis": analysis[:500] if len(analysis) > 500 else analysis,
+                    },
+                    result_score=new_score,
+                    result_state=current_state,
+                )
+                play_action_history.append(action_record)
+                self.action_history.append(action_record)
+                
+                self._previous_action = human_action_dict
+                self._previous_images = frame_images
+                self._previous_grids = frame_grids
+                self._previous_score = current_score
+                current_score = new_score
+                play_action_counter += 1
+                self._play_action_counter = play_action_counter
+                self._current_guid = guid # Update guid in agent state
+
+                logger.info(
+                    f"Play {play_num}, Action {play_action_counter}: {action_name}, "
+                    f"Score: {current_score}, State: {current_state}"
+                )
+
+                # Save checkpoint periodically
+                if self.checkpoint_frequency > 0 and play_action_counter % self.checkpoint_frequency == 0:
+                    logger.info(f"Saving checkpoint at action {play_action_counter}")
+                    self.save_checkpoint()
+
+            except Exception as e:
+                logger.error(f"Error during game loop: {e}", exc_info=True)
+                break
+        
+        return {
+            "score": current_score,
+            "state": current_state,
+            "actions_taken": play_action_counter,
+            "action_history": play_action_history
+        }
 
