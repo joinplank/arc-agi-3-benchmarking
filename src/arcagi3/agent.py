@@ -183,8 +183,7 @@ class MultimodalAgent:
         self.current_game_id: Optional[str] = None
         self.current_hint: Optional[str] = None
         
-        # Initialize provider adapter
-        self.provider = create_provider(config)
+        # Vision support already determined from provider initialized earlier
         self._model_supports_vision = bool(getattr(self.provider.model_config, "is_multimodal", False))
         self._use_vision = bool(use_vision and self._model_supports_vision)
 
@@ -222,7 +221,7 @@ class MultimodalAgent:
         self._previous_action: Optional[Dict[str, Any]] = None
         self._previous_images: List[Image.Image] = []
         self._previous_grids: List[List[List[int]]] = []  # Store raw grids for text-based providers
-        self._resumed_current_grids: Optional[List[List[List[int]]]] = None # Store current grids from resumed checkpoint
+        self._current_grids: List[List[List[int]]] = []  # Current game state after last action; used for checkpoint restoration
         self._previous_score = 0
 
         self._previous_prompt = ""
@@ -384,7 +383,9 @@ class MultimodalAgent:
             self._previous_action = state["previous_action"]
             self._previous_images = state["previous_images"]
             self._previous_grids = state.get("previous_grids", [])
-            self._resumed_current_grids = state.get("current_grids", [])
+            self._current_grids = state.get("current_grids", [])
+            self._available_actions = state.get("available_actions", [])
+            self._available_actions_prompt = state.get("available_actions_prompt", "")
 
             logger.info(
                 f"Restored checkpoint: game_id={self.current_game_id}, "
@@ -687,6 +688,9 @@ class MultimodalAgent:
                 "previous_action": self._previous_action,
                 "previous_images": self._previous_images,
                 "previous_grids": self._previous_grids,
+                "current_grids": self._current_grids,
+                "available_actions": self._available_actions,
+                "available_actions_prompt": self._available_actions_prompt,
             },
             "metrics": {
                 "total_cost": self.total_cost,
@@ -770,7 +774,7 @@ class MultimodalAgent:
                         "guid": guid,
                         "score": current_score,
                         "state": current_state,
-                        "frame": restored_frame if restored_frame else []
+                        "frame": self._current_grids if self._current_grids else []
                     }
                     logger.info(f"Continuing session with guid: {guid}, score: {current_score}")
                 
@@ -959,7 +963,7 @@ class MultimodalAgent:
                     "tokens:": [self.total_usage.prompt_tokens, self.total_usage.completion_tokens],
                 }
                 
-                # Execute action
+                # Execute action - this returns the NEW state after the action
                 state = self._execute_game_action(action_name, action_data_dict, game_id, guid, reasoning_for_api)
                 guid = state.get("guid", guid)
                 new_score = state.get("score", current_score)
@@ -983,14 +987,25 @@ class MultimodalAgent:
                 play_action_history.append(action_record)
                 self.action_history.append(action_record)
                 
+                # Update previous state for the NEXT iteration's analysis
+                # The next iteration will compare:
+                #   - self._previous_images/grids (current frames, after THIS action)
+                #   - vs next_frames (frames after NEXT action)
+                # This way each analysis compares before/after for one action
                 self._previous_action = human_action_dict
                 self._previous_images = frame_images
                 self._previous_grids = frame_grids
                 self._previous_score = current_score
+                
+                # Track current state: _previous_grids holds frames BEFORE this action,
+                # _current_grids holds frames AFTER this action (for checkpoint save/restore)
+                self._current_grids = state.get("frame", [])
+                
+                # Update current variables for next iteration
                 current_score = new_score
                 play_action_counter += 1
                 self._play_action_counter = play_action_counter
-                self._current_guid = guid # Update guid in agent state
+                self._current_guid = guid
 
                 logger.info(
                     f"Play {play_num}, Action {play_action_counter}: {action_name}, "
