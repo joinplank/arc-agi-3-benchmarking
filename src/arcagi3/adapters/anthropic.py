@@ -244,19 +244,19 @@ class AnthropicAdapter(ProviderAdapter):
     def extract_usage(self, response):
         # Handle consumed streams
         if isinstance(response, StreamResponse):
-            return response.prompt_tokens, response.completion_tokens
+            return response.prompt_tokens, response.completion_tokens, 0
         
         # Check if it's an unconsumed stream
         if 'Stream' in str(type(response)):
             # For streams, we can't get usage info
-            # Return 0,0 for now - usage will need to be tracked differently
-            return 0, 0
+            # Return 0,0,0 for now - usage will need to be tracked differently
+            return 0, 0, 0
         
         if hasattr(response, 'usage'):
-            # Anthropic format
+            # Anthropic format (no separate reasoning tokens)
             if hasattr(response.usage, 'input_tokens'):
-                return response.usage.input_tokens, response.usage.output_tokens
-        return 0, 0
+                return response.usage.input_tokens, response.usage.output_tokens, 0
+        return 0, 0, 0
     
     def extract_content(self, response):
         if hasattr(response, 'content') and response.content:

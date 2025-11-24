@@ -42,6 +42,9 @@ class _ResponsesResponse:
 
 class OpenAIBaseAdapter(ProviderAdapter, abc.ABC):
     
+    def __init__(self, config: str):
+        super().__init__(config)
+        self._last_consumed_stream = None  # Cache for stream consumption
 
     @abc.abstractmethod
     def make_prediction(self, prompt: str, task_id: Optional[str] = None, test_id: Optional[str] = None, pair_index: int = None) -> Attempt:
@@ -464,22 +467,54 @@ class OpenAIBaseAdapter(ProviderAdapter, abc.ABC):
             total_cost=total_cost,           # True total expenditure
         ) 
 
+    def _consume_openai_stream(self, stream) -> StreamResponse:
+        """Consume an OpenAI stream and extract content + usage"""
+        full_content = []
+        prompt_tokens = 0
+        completion_tokens = 0
+        reasoning_tokens = 0
+        
+        try:
+            for chunk in stream:
+                if hasattr(chunk, 'usage') and chunk.usage:
+                    prompt_tokens = chunk.usage.prompt_tokens
+                    completion_tokens = chunk.usage.completion_tokens
+                    # Extract reasoning tokens if available
+                    if hasattr(chunk.usage, 'completion_tokens_details') and chunk.usage.completion_tokens_details:
+                        reasoning_tokens = getattr(chunk.usage.completion_tokens_details, 'reasoning_tokens', 0) or 0
+                if hasattr(chunk, 'choices') and chunk.choices:
+                    delta = chunk.choices[0].delta
+                    if hasattr(delta, 'content') and delta.content:
+                        full_content.append(delta.content)
+        except Exception as e:
+            logger.error(f"Error consuming stream: {e}")
+        
+        # Create a StreamResponse with reasoning_tokens attribute
+        stream_response = StreamResponse(''.join(full_content), prompt_tokens, completion_tokens)
+        stream_response.reasoning_tokens = reasoning_tokens
+        return stream_response
+
     def extract_usage(self, response):
+        """Extract token usage from response. Returns (prompt_tokens, completion_tokens, reasoning_tokens)"""
         # Handle consumed streams
         if isinstance(response, StreamResponse):
-            return response.prompt_tokens, response.completion_tokens
+            # For streams, reasoning tokens would be in the response if available
+            reasoning_tokens = getattr(response, 'reasoning_tokens', 0) if hasattr(response, 'reasoning_tokens') else 0
+            return response.prompt_tokens, response.completion_tokens, reasoning_tokens
         
-        # Check if it's an unconsumed stream
+        # Check if it's an unconsumed stream - consume it!
         if 'Stream' in str(type(response)):
-            # For streams, we can't get usage info
-            # Return 0,0 for now - usage will need to be tracked differently
-            return 0, 0
+            # Consume the stream to get usage
+            consumed = self._consume_openai_stream(response)
+            # Cache the consumed response for extract_content to use
+            self._last_consumed_stream = consumed
+            reasoning_tokens = getattr(consumed, 'reasoning_tokens', 0) if hasattr(consumed, 'reasoning_tokens') else 0
+            return consumed.prompt_tokens, consumed.completion_tokens, reasoning_tokens
         
-        # OpenAI format
-        if hasattr(response, 'usage'):
-            if hasattr(response.usage, 'prompt_tokens'):
-                return response.usage.prompt_tokens, response.usage.completion_tokens
-        return 0, 0
+        # Use _get_usage which handles both Chat Completions and Responses API formats
+        usage = self._get_usage(response)
+        reasoning_tokens = usage.completion_tokens_details.reasoning_tokens if usage.completion_tokens_details else 0
+        return usage.prompt_tokens, usage.completion_tokens, reasoning_tokens
     
     def extract_content(self, response):
          # Check if it's an OpenAI stream - consume it first
@@ -498,20 +533,16 @@ class OpenAIBaseAdapter(ProviderAdapter, abc.ABC):
                                 texts.append(part.text or "")
             return "\n".join(texts).strip()
 
+        # Check if we have a cached consumed stream from extract_usage()
+        if hasattr(self, '_last_consumed_stream') and self._last_consumed_stream:
+            content = self._last_consumed_stream.content
+            self._last_consumed_stream = None  # Clear cache
+            return content
+
         if 'Stream' in str(type(response)):
             # Consume the stream and get the final response
-            logger.debug("Consuming OpenAI stream...")
-            full_content = []
-            try:
-                for chunk in response:
-                    if hasattr(chunk, 'choices') and chunk.choices:
-                        delta = chunk.choices[0].delta
-                        if hasattr(delta, 'content') and delta.content:
-                            full_content.append(delta.content)
-                return ''.join(full_content)
-            except Exception as e:
-                logger.error(f"Error consuming stream: {e}")
-                return ""
+            consumed = self._consume_openai_stream(response)
+            return consumed.content
         
         # OpenAI format - keep it simple like original
         if hasattr(response, 'choices') and response.choices:

@@ -314,20 +314,20 @@ class GeminiAdapter(ProviderAdapter):
     def extract_usage(self, response):
         # Handle consumed streams
         if isinstance(response, StreamResponse):
-            return response.prompt_tokens, response.completion_tokens
+            return response.prompt_tokens, response.completion_tokens, 0
         
         # Check if it's an unconsumed stream
         if 'Stream' in str(type(response)):
             # For streams, we can't get usage info
-            # Return 0,0 for now - usage will need to be tracked differently
-            return 0, 0
+            # Return 0,0,0 for now - usage will need to be tracked differently
+            return 0, 0, 0
         
-        # Gemini format
+        # Gemini format (no separate reasoning tokens)
         if hasattr(response, 'usage_metadata') and response.usage_metadata:
             prompt_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
             completion_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
-            return prompt_tokens, completion_tokens
-        return 0, 0
+            return prompt_tokens, completion_tokens, 0
+        return 0, 0, 0
     
     def extract_content(self, response):
         if hasattr(response, 'text'):

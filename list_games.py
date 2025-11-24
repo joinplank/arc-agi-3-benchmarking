@@ -16,16 +16,15 @@ def list_games():
     # But to be thorough...
     
     client = GameClient()
-    # We need a card_id to list games? 
-    # client.list_games(card_id)
     
-    # If I don't have a card_id, I might need to start a new scorecard.
-    scorecard = client.open_scorecard("training") # or "evaluation"
-    print(f"Opened scorecard: {scorecard['id']}")
+    # List games doesn't require a scorecard - it lists all available games
+    games = client.list_games()
     
-    games = client.list_games(scorecard['id'])
     if games:
-        print(f"Found game: {games[0]}")
+        print(f"Found {len(games)} games")
+        print(f"First game: {games[0]}")
+        if len(games) > 1:
+            print(f"Last game: {games[-1]}")
     else:
         print("No games found")
 

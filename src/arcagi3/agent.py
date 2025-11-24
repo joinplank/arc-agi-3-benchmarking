@@ -51,8 +51,6 @@ HUMAN_ACTIONS = {
 
 HUMAN_ACTIONS_LIST = list(HUMAN_ACTIONS.keys())
 
-HUMAN_ACTIONS_LIST = list(HUMAN_ACTIONS.keys())
-
 
 class MultimodalAgent:
     """Agent that plays ARC-AGI-3 games using multimodal LLMs"""
@@ -302,8 +300,8 @@ class MultimodalAgent:
         
         try:
             response = self.provider.call_provider(messages)
-            prompt_tokens, completion_tokens = self.provider.extract_usage(response)
-            self._update_costs(prompt_tokens, completion_tokens)
+            prompt_tokens, completion_tokens, reasoning_tokens = self.provider.extract_usage(response)
+            self._update_costs(prompt_tokens, completion_tokens, reasoning_tokens)
             
             compressed = self.provider.extract_content(response).strip()
             compressed_word_count = len(compressed.split(" ")) if compressed else 0
@@ -399,7 +397,7 @@ class MultimodalAgent:
             logger.error(f"Failed to restore checkpoint: {e}", exc_info=True)
             return False
 
-    def _update_costs(self, prompt_tokens: int, completion_tokens: int):
+    def _update_costs(self, prompt_tokens: int, completion_tokens: int, reasoning_tokens: int = 0):
         """Update cost and usage tracking"""
         # Get pricing from model config
         input_cost_per_token = self.provider.model_config.pricing.input / 1_000_000
@@ -408,13 +406,26 @@ class MultimodalAgent:
         prompt_cost = prompt_tokens * input_cost_per_token
         completion_cost = completion_tokens * output_cost_per_token
         
+        # Reasoning tokens are billed at the output rate but tracked separately
+        reasoning_cost = reasoning_tokens * output_cost_per_token if reasoning_tokens > 0 else 0.0
+        
         self.total_cost.prompt_cost += prompt_cost
         self.total_cost.completion_cost += completion_cost
+        if reasoning_tokens > 0:
+            if self.total_cost.reasoning_cost is None:
+                self.total_cost.reasoning_cost = 0.0
+            self.total_cost.reasoning_cost += reasoning_cost
         self.total_cost.total_cost += prompt_cost + completion_cost
         
         self.total_usage.prompt_tokens += prompt_tokens
         self.total_usage.completion_tokens += completion_tokens
         self.total_usage.total_tokens += prompt_tokens + completion_tokens
+        
+        # Update reasoning token details
+        if reasoning_tokens > 0:
+            if not self.total_usage.completion_tokens_details:
+                self.total_usage.completion_tokens_details = CompletionTokensDetails()
+            self.total_usage.completion_tokens_details.reasoning_tokens += reasoning_tokens
 
     def _analyze_previous_action(
         self,
@@ -484,8 +495,8 @@ class MultimodalAgent:
         response = self.provider.call_provider(messages)
         
         # Track costs - handle different response formats
-        prompt_tokens, completion_tokens = self.provider.extract_usage(response)
-        self._update_costs(prompt_tokens, completion_tokens)
+        prompt_tokens, completion_tokens, reasoning_tokens = self.provider.extract_usage(response)
+        self._update_costs(prompt_tokens, completion_tokens, reasoning_tokens)
         
         # Extract analysis and update memory
         analysis_message = self.provider.extract_content(response)
@@ -542,8 +553,8 @@ class MultimodalAgent:
         response = self.provider.call_provider(messages)
         
         # Track costs
-        prompt_tokens, completion_tokens = self.provider.extract_usage(response)
-        self._update_costs(prompt_tokens, completion_tokens)
+        prompt_tokens, completion_tokens, reasoning_tokens = self.provider.extract_usage(response)
+        self._update_costs(prompt_tokens, completion_tokens, reasoning_tokens)
         
         action_message = self.provider.extract_content(response)
 
@@ -636,8 +647,8 @@ class MultimodalAgent:
         response = self.provider.call_provider(messages)
         
         # Track costs
-        prompt_tokens, completion_tokens = self.provider.extract_usage(response)
-        self._update_costs(prompt_tokens, completion_tokens)
+        prompt_tokens, completion_tokens, reasoning_tokens = self.provider.extract_usage(response)
+        self._update_costs(prompt_tokens, completion_tokens, reasoning_tokens)
         
         action_message = self.provider.extract_content(response)
         logger.info(f"Game action: {action_message[:200]}...")
@@ -835,7 +846,8 @@ class MultimodalAgent:
                 actions=play_action_history,
                 final_memory=self._get_memory_with_actions(),
                 timestamp=datetime.now(timezone.utc),
-                scorecard_url=scorecard_url
+                scorecard_url=scorecard_url,
+                card_id=self.card_id
             )
             
             logger.info(
@@ -923,6 +935,14 @@ class MultimodalAgent:
                 frame_grids = frames
                 frame_images = [grid_to_image(frame) for frame in frames]
                 
+                # Track cost before this action to calculate per-action cost
+                cost_before = Cost(
+                    prompt_cost=self.total_cost.prompt_cost,
+                    completion_cost=self.total_cost.completion_cost,
+                    reasoning_cost=self.total_cost.reasoning_cost,
+                    total_cost=self.total_cost.total_cost
+                )
+                
                 # A single step of the game
                 try:
                     game_action_dict = self.step(frame_images, frame_grids, current_score)
@@ -969,6 +989,14 @@ class MultimodalAgent:
                 new_score = state.get("score", current_score)
                 current_state = state.get("state", "IN_PROGRESS")
                 
+                # Calculate cost for this action only
+                action_cost = Cost(
+                    prompt_cost=self.total_cost.prompt_cost - cost_before.prompt_cost,
+                    completion_cost=self.total_cost.completion_cost - cost_before.completion_cost,
+                    reasoning_cost=(self.total_cost.reasoning_cost or 0) - (cost_before.reasoning_cost or 0),
+                    total_cost=self.total_cost.total_cost - cost_before.total_cost
+                )
+                
                 # Update tracking
                 self.action_counter += 1
                 action_record = GameActionRecord(
@@ -983,6 +1011,7 @@ class MultimodalAgent:
                     },
                     result_score=new_score,
                     result_state=current_state,
+                    cost=action_cost,
                 )
                 play_action_history.append(action_record)
                 self.action_history.append(action_record)
