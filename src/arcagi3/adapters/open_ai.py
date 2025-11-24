@@ -238,23 +238,3 @@ IMPORTANT: Return ONLY the array, with no additional text, quotes, or formatting
                 **self.model_config.kwargs
             )
         
-    
-    def _consume_openai_stream(self, stream) -> StreamResponse:
-        """Consume an OpenAI stream and extract content + usage"""
-        full_content = []
-        prompt_tokens = 0
-        completion_tokens = 0
-        
-        try:
-            for chunk in stream:
-                if hasattr(chunk, 'usage') and chunk.usage:
-                    prompt_tokens = chunk.usage.prompt_tokens
-                    completion_tokens = chunk.usage.completion_tokens
-                if hasattr(chunk, 'choices') and chunk.choices:
-                    delta = chunk.choices[0].delta
-                    if hasattr(delta, 'content') and delta.content:
-                        full_content.append(delta.content)
-        except Exception as e:
-            logger.error(f"Error consuming stream: {e}")
-        
-        return StreamResponse(''.join(full_content), prompt_tokens, completion_tokens)

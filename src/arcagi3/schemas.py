@@ -77,6 +77,7 @@ class GameResult(BaseModel):
     final_memory: Optional[str] = None
     timestamp: datetime = None
     scorecard_url: Optional[str] = None
+    card_id: Optional[str] = None
     
     model_config = {
         'json_encoders': {
@@ -236,3 +237,4 @@ class StreamResponse:
     content: str
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    reasoning_tokens: int = 0

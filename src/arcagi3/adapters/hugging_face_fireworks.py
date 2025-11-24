@@ -150,7 +150,7 @@ The JSON should be in this format:
             return None
         
     def extract_usage(self, response):
-        return 0, 0
+        return 0, 0, 0
     
     def extract_content(self, response):
         return ""

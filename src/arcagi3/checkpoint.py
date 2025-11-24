@@ -31,56 +31,52 @@ class CheckpointManager:
         self.card_id = card_id
         self.checkpoint_path = Path(self.CHECKPOINT_DIR) / card_id
         
-    def save_state(
-        self,
-        config: str,
-        game_id: str,
-        guid: Optional[str],
-        max_actions: int,
-        retry_attempts: int,
-        num_plays: int,
-        action_counter: int,
-        total_cost: Cost,
-        total_usage: Usage,
-        action_history: List[GameActionRecord],
-        memory_prompt: str,
-        previous_action: Optional[Dict[str, Any]],
-        previous_images: List[Image.Image],
-        previous_score: int,
-        current_play: int = 1,
-        play_action_counter: int = 0,
-        use_vision: bool = True,
-        previous_grids: Optional[List[List[List[int]]]] = None,
-        current_grids: Optional[List[List[List[int]]]] = None,
-    ):
+    def save_state(self, state: Dict[str, Any]):
         """
-        Save complete agent state to checkpoint.
+        Save the current agent state to a checkpoint file.
 
         Args:
-            config: Model configuration name
-            game_id: Current game ID
-            guid: Current session GUID
-            max_actions: Maximum actions setting
-            retry_attempts: Retry attempts setting
-            num_plays: Number of plays setting
-            action_counter: Total action counter
-            total_cost: Total cost so far
-            total_usage: Total token usage so far
-            action_history: Complete action history
-            memory_prompt: Current memory/conversation state
-            previous_action: Previous action taken
-            previous_images: Previous frame images
-            previous_score: Previous score
-            current_play: Current play number
-            play_action_counter: Actions in current play
-            use_vision: Whether vision mode is enabled
-            previous_grids: Previous frame grids (for text-only mode)
+            state: Dictionary containing all state to be saved (with metadata, memory, metrics keys)
         """
         logger.info(f"Saving checkpoint to {self.checkpoint_path}")
         
         # Create checkpoint directory
         self.checkpoint_path.mkdir(parents=True, exist_ok=True)
         
+        # Extract components from nested structure
+        metadata_dict = state.get("metadata", {})
+        memory_dict = state.get("memory", {})
+        metrics_dict = state.get("metrics", {})
+        
+        # Extract metadata fields
+        config = metadata_dict.get("config")
+        game_id = metadata_dict.get("game_id")
+        guid = metadata_dict.get("guid")
+        max_actions = metadata_dict.get("max_actions")
+        retry_attempts = metadata_dict.get("retry_attempts")
+        num_plays = metadata_dict.get("num_plays")
+        action_counter = metadata_dict.get("action_counter")
+        current_play = metadata_dict.get("current_play", 1)
+        play_action_counter = metadata_dict.get("play_action_counter", 0)
+        previous_score = metadata_dict.get("previous_score", 0)
+        
+        # Extract memory fields
+        memory_prompt = memory_dict.get("prompt", "")
+        previous_action = memory_dict.get("previous_action")
+        previous_images = memory_dict.get("previous_images", [])
+        previous_grids = memory_dict.get("previous_grids")
+        current_grids = memory_dict.get("current_grids")
+        available_actions = memory_dict.get("available_actions", [])
+        available_actions_prompt = memory_dict.get("available_actions_prompt", "")
+        
+        # Extract metrics fields
+        total_cost = metrics_dict.get("total_cost")
+        total_usage = metrics_dict.get("total_usage")
+        action_history = metrics_dict.get("action_history", [])
+        
+        # Determine use_vision (not in current get_state, but needed for backward compat)
+        use_vision = len(previous_images) > 0
+
         # Save metadata
         metadata = {
             "card_id": self.card_id,
@@ -103,8 +99,8 @@ class CheckpointManager:
         
         # Save costs and usage
         costs = {
-            "total_cost": total_cost.model_dump(),
-            "total_usage": total_usage.model_dump(),
+            "total_cost": total_cost.model_dump() if total_cost else {},
+            "total_usage": total_usage.model_dump() if total_usage else {},
         }
         
         with open(self.checkpoint_path / "costs.json", "w") as f:
@@ -117,7 +113,7 @@ class CheckpointManager:
         
         # Save memory
         with open(self.checkpoint_path / "memory.txt", "w") as f:
-            f.write(memory_prompt)
+            f.write(memory_prompt if memory_prompt else "")
         
         # Save previous action
         if previous_action:
@@ -141,6 +137,16 @@ class CheckpointManager:
         if current_grids:
             with open(self.checkpoint_path / "current_grids.json", "w") as f:
                 json.dump(current_grids, f)
+
+        # Save available actions
+        if available_actions:
+            with open(self.checkpoint_path / "available_actions.json", "w") as f:
+                json.dump(available_actions, f)
+
+        # Save available actions prompt
+        if available_actions_prompt:
+            with open(self.checkpoint_path / "available_actions_prompt.txt", "w") as f:
+                f.write(available_actions_prompt)
 
         logger.info(f"Checkpoint saved successfully")
     
@@ -231,6 +237,20 @@ class CheckpointManager:
             with open(current_grids_path) as f:
                 current_grids = json.load(f)
 
+        # Load available actions
+        available_actions = []
+        available_actions_path = self.checkpoint_path / "available_actions.json"
+        if available_actions_path.exists():
+            with open(available_actions_path) as f:
+                available_actions = json.load(f)
+
+        # Load available actions prompt
+        available_actions_prompt = ""
+        available_actions_prompt_path = self.checkpoint_path / "available_actions_prompt.txt"
+        if available_actions_prompt_path.exists():
+            with open(available_actions_prompt_path) as f:
+                available_actions_prompt = f.read()
+
         logger.info(f"Checkpoint loaded successfully")
 
         return {
@@ -243,6 +263,8 @@ class CheckpointManager:
             "previous_images": previous_images,
             "previous_grids": previous_grids,
             "current_grids": current_grids,
+            "available_actions": available_actions,
+            "available_actions_prompt": available_actions_prompt,
         }
     
     def checkpoint_exists(self) -> bool:

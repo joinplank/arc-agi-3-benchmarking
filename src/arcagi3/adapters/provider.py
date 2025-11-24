@@ -62,9 +62,12 @@ class ProviderAdapter(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def extract_usage(self, response: Any) -> tuple[int, int]:
+    def extract_usage(self, response: Any) -> tuple[int, int, int]:
         """
-        Extract token usage from provider response
+        Extract token usage from provider response.
+        
+        Returns:
+            Tuple of (prompt_tokens, completion_tokens, reasoning_tokens)
         """
         pass
 
