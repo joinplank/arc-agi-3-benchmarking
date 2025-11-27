@@ -88,11 +88,6 @@ def analyze_checkpoint(checkpoint_dir: Path) -> Dict[str, Any]:
 
 def parse_test_log(log_file: str) -> Dict[str, Any]:
     """Parse the test output log to extract model results."""
-    # Resolve log file path relative to project root
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    log_path = os.path.join(project_root, log_file) if not os.path.isabs(log_file) else log_file
-    
     results = {
         'successful': [],
         'failed': [],
@@ -100,11 +95,11 @@ def parse_test_log(log_file: str) -> Dict[str, Any]:
         'errors': defaultdict(list)
     }
     
-    if not os.path.exists(log_path):
+    if not os.path.exists(log_file):
         return results
     
     current_model = None
-    with open(log_path, 'r') as f:
+    with open(log_file, 'r') as f:
         for line in f:
             # Look for model start
             if "Starting test for model:" in line:
@@ -131,9 +126,7 @@ def parse_test_log(log_file: str) -> Dict[str, Any]:
 
 def generate_report():
     """Generate comprehensive checkpoint analysis report."""
-    script_dir = Path(__file__).parent
-    project_root = script_dir.parent
-    checkpoint_dir = project_root / ".checkpoint"
+    checkpoint_dir = Path(".checkpoint")
     log_file = "test_run_output.log"
     
     print("="*80)
@@ -322,4 +315,5 @@ def generate_report():
 
 if __name__ == "__main__":
     generate_report()
+
 

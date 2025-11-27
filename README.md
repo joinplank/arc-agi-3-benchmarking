@@ -358,7 +358,7 @@ arc-agi-3-benchmarking/
 │       └── cli.py           # CLI utilities
 ├── main.py                   # Single game CLI entry point
 ├── cli/run_all.py           # Parallel batch execution
-├── example_usage.py          # Code examples
+├── scripts/example_usage.py   # Code examples
 ├── hints.yml                 # Optional game-specific hints
 ├── .checkpoint/              # Checkpoint storage (auto-created)
 ├── results/                  # Game results (JSON files)
@@ -566,7 +566,7 @@ results/
 
 - **ARC Prize**: https://arcprize.org
 - **API Documentation**: https://docs.arcprize.org/api-reference/
-- **Code Examples**: See [example_usage.py](example_usage.py)
+- **Code Examples**: See [scripts/example_usage.py](scripts/example_usage.py)
 
 ## Best Practices & Tips
 

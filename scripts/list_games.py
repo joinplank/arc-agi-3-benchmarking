@@ -33,3 +33,4 @@ if __name__ == "__main__":
         list_games()
     except Exception as e:
         print(f"Error: {e}")
+

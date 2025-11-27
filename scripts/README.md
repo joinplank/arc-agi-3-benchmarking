@@ -30,13 +30,22 @@ cd /path/to/project
 uv run python scripts/analyze_checkpoints.py
 ```
 
-### `generate_detailed_report.py`
-Generates a detailed report on model test results with checkpoint validation.
+### `example_usage.py`
+Example usage of the ARC-AGI-3 benchmarking framework with code examples.
 
 **Usage:**
 ```bash
 cd /path/to/project
-uv run python scripts/generate_detailed_report.py
+uv run python scripts/example_usage.py
+```
+
+### `list_games.py`
+Lists all available games from the ARC-AGI-3 API.
+
+**Usage:**
+```bash
+cd /path/to/project
+uv run python scripts/list_games.py
 ```
 
 ## Verification Scripts
