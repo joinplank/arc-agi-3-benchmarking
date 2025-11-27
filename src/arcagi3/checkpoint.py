@@ -6,6 +6,7 @@ This allows for resuming runs after crashes or interruptions.
 import json
 import logging
 import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -121,10 +122,14 @@ class CheckpointManager:
                 json.dump(previous_action, f, indent=2)
         
         # Save previous images
+        # Clear existing images directory to prevent stale files from accumulating
+        # (e.g., if previous checkpoint had 3 frames but current has 1)
+        images_dir = self.checkpoint_path / "previous_images"
+        if images_dir.exists():
+            shutil.rmtree(images_dir)
+        
         if previous_images:
-            images_dir = self.checkpoint_path / "previous_images"
             images_dir.mkdir(exist_ok=True)
-
             for i, img in enumerate(previous_images):
                 img.save(images_dir / f"frame_{i}.png")
 
@@ -274,7 +279,6 @@ class CheckpointManager:
     def delete_checkpoint(self):
         """Delete the checkpoint directory"""
         if self.checkpoint_path.exists():
-            import shutil
             shutil.rmtree(self.checkpoint_path)
             logger.info(f"Deleted checkpoint: {self.checkpoint_path}")
     
